@@ -1,0 +1,7 @@
+# local test artifacts
+.playwright-mcp/
+*-page.png
+stax-*.png
+test-*.png
+node_modules/
+.DS_Store
