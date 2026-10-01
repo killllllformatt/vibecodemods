@@ -10,7 +10,7 @@ merged into one mode-detecting menu eventually, built from this code.
 | Mode | File | What it does |
 | --- | --- | --- |
 | Trust No One | [`trust-no-one/tno-reveal.js`](trust-no-one/tno-reveal.js) | Reveals every player's real role (impostor vs detective), highlights the correct answer, optional F8 auto-answer, and auto-runs Mission Control actions (investigate / note look / meeting / impostor sabotage / donate) on a chosen target when you can afford them. |
-| Snowy Survival | [`snowy-survival/snowy-esp.js`](snowy-survival/snowy-esp.js) | Zombie/human infection ESP: boxes + tracers by infection status, health/shield bars, live roster. |
+| Snowy Survival | [`snowy-survival/snowy.js`](snowy-survival/snowy.js) | Separate cursed / human ESP (boxes, tracers, names, health; neutral colour in the lobby), live roster, correct-answer highlight (only while the question screen is open), and auto-answer that never opens the question screen. |
 
 Each file is a self-contained IIFE. To run: paste it inline into the page console (the live site's
 CSP blocks loading from `127.0.0.1`, so inline is the reliable path). Both toggle their panel with
@@ -98,5 +98,23 @@ code lives in the `.js` (its `window.__tnoReveal.api` is the data contract the b
   BFS for an object with `.network.room && .me && .world`; deref ObservableValues via `value_`).
 - teamKind: `'2'`=zombie, `'1'`=human. Read-only — Gimkit gameplay is server-authoritative
   (teleport/speed/team/item writes all rejected), so these stay ESP/HUD only.
+- **Answers leak (live-verified 2026-10-01):** every `gimkitLiveQuestion` device's state carries
+  `GLOBAL_questions` (JSON, all questions with `answers[].correct`) and `PLAYER_<authId>_currentQuestionId`.
+  Answer = `room.send('MESSAGE_FOR_DEVICE', {key:'answered', deviceId, data:{answer:<answerId>}})`. It
+  works with no question screen open (+1000 energy as a human, +6 snowballs once cursed). Unlike TNO,
+  a repeat or stale answer is judged against the CURRENT question and counts as **wrong**, so answer
+  each question exactly once. Answering behind an open question screen leaves that screen stale, which
+  is why auto-answer pauses while one is open. Main question device = the one with no fixed
+  `textShownWhenAnsweringCorrectly`; a second "+1 Bait" device exists. The open screen's question
+  is `me.deviceUI.current.props.currentQuestionId`; answer tiles are `span.notranslate`. Match them
+  exactly, because decoys like "Hawai" vs "Hawaii" exist.
+- Device interactions: call the device's own `interactiveZones.onInteraction()` (from
+  `store.phaser.scene.worldManager.devices.allDevices`). The snowball vending machine sends
+  `MESSAGE_FOR_DEVICE {key:'purchase', deviceId}` and works from **anywhere on the map** (bought 32
+  snowballs for ⚡5000 at 2385 px). `me.properties.isZombie` is a shared flag, NOT "I'm cursed"; use `teamId`.
+- Mode marker: `JSON.parse(room.state.mapSettings).musicUrl` contains `/modes/snowInfection/`. No game
+  clock. A refresh-rejoin briefly leaves a ghost duplicate and comes back cursed.
+- Not verified: knockouts and infection by snowball. The cursed headless test player always shows a
+  client-side "couldn't reconnect" overlay that blocks firing, even though its socket keeps working.
 
 Full protocol capture, exploit probes, and history: see the `project_gimkit_mod` memory.
