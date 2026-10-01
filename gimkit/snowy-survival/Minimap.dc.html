@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+html{background:#0d0f14}body{margin:0;background:#0d0f14;color:#e8eaf0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:#d58bff}a:hover{color:#f0d0ff}
+</style>
+</helmet>
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="arena" viewBox="0 0 7000 3600">
+<rect width="7000" height="3600" fill="#eef3f7"></rect>
+<polygon points="792,374 2808,374 2808,918 1800,918 1800,1530 792,1530" fill="#cfd2d6"></polygon>
+<polygon points="3420,374 5652,374 5652,1530 4500,1530 4500,918 3420,918" fill="#eab676"></polygon>
+<rect x="4716" y="938" width="720" height="524" fill="#b08862"></rect>
+<polygon points="648,2108 1800,2108 1800,2686 2808,2686 2808,3264 648,3264" fill="#f1dcae"></polygon>
+<rect x="1094" y="2312" width="346" height="544" rx="40" fill="#6bb6ea"></rect>
+<polygon points="4500,2108 5616,2108 5616,3264 3420,3264 3420,2686 4500,2686" fill="#5e6168"></polygon>
+<rect x="3542" y="1272" width="288" height="340" rx="30" fill="#b6dcf2"></rect>
+<rect x="3700" y="1440" width="230" height="230" rx="30" fill="#b6dcf2"></rect>
+<rect x="2592" y="1598" width="432" height="272" rx="30" fill="#cfe0d2"></rect>
+<rect x="4104" y="2312" width="216" height="238" rx="30" fill="#cfe0d2"></rect>
+<rect x="5148" y="3128" width="180" height="136" rx="30" fill="#cfe0d2"></rect>
+<rect x="3240" y="90" width="160" height="140" rx="30" fill="#cfe0d2"></rect>
+<g fill="#a3afbd">
+<circle cx="2088" cy="1394" r="170"></circle><circle cx="2376" cy="1394" r="170"></circle><circle cx="3492" cy="1802" r="150"></circle><circle cx="5688" cy="1734" r="160"></circle><circle cx="5976" cy="1734" r="160"></circle>
+<ellipse cx="2448" cy="1054" rx="230" ry="120"></ellipse><ellipse cx="3636" cy="204" rx="230" ry="110"></ellipse><ellipse cx="3240" cy="748" rx="150" ry="90"></ellipse><ellipse cx="5184" cy="1870" rx="200" ry="100"></ellipse><ellipse cx="3600" cy="2210" rx="140" ry="80"></ellipse><ellipse cx="3800" cy="2176" rx="140" ry="80"></ellipse><ellipse cx="1116" cy="3332" rx="240" ry="110"></ellipse><ellipse cx="5148" cy="3366" rx="200" ry="100"></ellipse>
+<rect x="3110" y="204" width="130" height="340" rx="40"></rect><rect x="216" y="2600" width="260" height="300" rx="40"></rect><rect x="2916" y="3332" width="560" height="110" rx="30"></rect><rect x="5508" y="3400" width="400" height="140" rx="30"></rect><rect x="5760" y="850" width="160" height="120" rx="30"></rect><rect x="6230" y="1000" width="300" height="90" rx="30"></rect><rect x="2900" y="2000" width="200" height="110" rx="30"></rect>
+<circle cx="2952" cy="700" r="70"></circle><circle cx="1800" cy="1900" r="70"></circle><circle cx="432" cy="3100" r="70"></circle><circle cx="5800" cy="2900" r="70"></circle>
+</g>
+<g fill="#8fa394">
+<circle cx="1080" cy="136" r="90"></circle><circle cx="1224" cy="102" r="90"></circle><circle cx="2736" cy="1700" r="90"></circle><circle cx="2916" cy="1632" r="90"></circle><circle cx="3132" cy="1224" r="80"></circle><circle cx="4032" cy="1836" r="90"></circle><circle cx="4176" cy="1700" r="90"></circle><circle cx="4212" cy="2380" r="90"></circle><circle cx="432" cy="2244" r="90"></circle><circle cx="1944" cy="2516" r="80"></circle><circle cx="1728" cy="3298" r="80"></circle><circle cx="1872" cy="3366" r="80"></circle><circle cx="5220" cy="3332" r="80"></circle><circle cx="4320" cy="136" r="80"></circle>
+<circle cx="4824" cy="646" r="140"></circle><circle cx="5070" cy="646" r="140"></circle><circle cx="5340" cy="700" r="130"></circle>
+</g>
+<g fill="#3b4250">
+<circle cx="2196" cy="238" r="80"></circle><circle cx="6084" cy="1292" r="80"></circle><circle cx="3888" cy="3420" r="80"></circle><circle cx="4040" cy="3360" r="80"></circle>
+<ellipse cx="1512" cy="2346" rx="180" ry="130"></ellipse><ellipse cx="2628" cy="2958" rx="220" ry="150"></ellipse>
+<rect x="4580" y="2250" width="160" height="260"></rect><circle cx="5184" cy="2380" r="210"></circle><rect x="3672" y="2958" width="260" height="150"></rect>
+<circle cx="1080" cy="1156" r="190"></circle><rect x="1300" y="800" width="200" height="150"></rect><rect x="2300" y="560" width="300" height="180"></rect><rect x="4960" y="1000" width="350" height="70"></rect><rect x="1700" y="2900" width="420" height="90"></rect>
+</g>
+<g fill="none" stroke="#3b4250" stroke-width="1.25" vector-effect="non-scaling-stroke" stroke-linecap="round">
+<path d="M60 60 H6940 V3540 H60 V3150 M60 2900 V60" vector-effect="non-scaling-stroke"></path>
+<path d="M792 374 H2808 V918 H2300 M2050 918 H1800 V1530 H792 V374" vector-effect="non-scaling-stroke"></path>
+<path d="M3420 918 V374 H5652 V1530 H5000 M4750 1530 H4500 V1200 M4500 1000 V918 H3900" vector-effect="non-scaling-stroke"></path>
+<path d="M4716 938 H5436 V1462 H4716 Z" vector-effect="non-scaling-stroke"></path>
+<path d="M648 2108 H1800 V2500 M1800 2686 H2808 V3264 H1800 M1500 3264 H648 V2108" vector-effect="non-scaling-stroke"></path>
+<path d="M4500 2108 H5616 V3264 H4300 M4000 3264 H3420 V2686 H4100 M4350 2686 H4500 V2108" vector-effect="non-scaling-stroke"></path>
+</g>
+</symbol>
+<symbol id="lobby" viewBox="0 0 2400 1600">
+<rect width="2400" height="1600" fill="#eef3f7"></rect>
+<rect x="260" y="260" width="560" height="380" rx="30" fill="#cfe0d2"></rect>
+<rect x="1500" y="1000" width="560" height="340" rx="30" fill="#b6dcf2"></rect>
+<g fill="#a3afbd"><circle cx="1850" cy="480" r="150"></circle><ellipse cx="1150" cy="850" rx="260" ry="140"></ellipse><rect x="950" y="300" width="400" height="80" rx="30"></rect></g>
+<g fill="#8fa394"><circle cx="420" cy="1250" r="90"></circle><circle cx="560" cy="1330" r="80"></circle><circle cx="2150" cy="250" r="80"></circle></g>
+<g fill="#3b4250"><rect x="950" y="1250" width="400" height="70"></rect><circle cx="300" cy="900" r="70"></circle></g>
+<rect x="50" y="50" width="2300" height="1500" fill="none" stroke="#3b4250" stroke-width="1.25" vector-effect="non-scaling-stroke"></rect>
+</symbol>
+</defs>
+</svg>
+
+<div style="display:flex; flex-direction:column; gap:72px; padding:56px; width:1720px; box-sizing:border-box; background:#0d0f14; min-height:100%">
+
+<header style="display:flex; flex-direction:column; gap:10px; max-width:900px">
+<div style="font:700 12px/16px system-ui,sans-serif; letter-spacing:.12em; text-transform:uppercase; color:#c353ff">Snowy Survival · mod</div>
+<h1 style="margin:0; font:700 34px/40px system-ui,sans-serif; color:#f4f5f8">Minimap</h1>
+<p style="margin:0; font:400 15px/23px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Mock-ups for every state in brief §3. Colour meanings are unchanged: you <span style="color:#4db6ff">#4db6ff</span>, cursed <span style="color:#c353ff">#c353ff</span>, human <span style="color:#39d353">#39d353</span>, lobby <span style="color:#f4c430">#f4c430</span>. Theme values are at the bottom.</p>
+</header>
+
+<section data-screen-label="01 Small map" style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; align-items:baseline; gap:14px"><span style="font:700 13px/16px ui-monospace,Menlo,monospace; color:#c353ff">01</span><h2 style="margin:0; font:700 20px/26px system-ui,sans-serif">Small map, in game</h2></div>
+<div style="display:flex; gap:32px; align-items:flex-start">
+<div style="position:relative; width:1100px; height:760px; border-radius:10px; overflow:hidden; background:url(uploads/minimap-small-current.png) 0 0 / 1100px 760px no-repeat; flex:none">
+<div style="position:absolute; right:12px; bottom:12px; width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,.35)">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ gv.l }}; top:{{ gv.t }}; width:{{ gv.w }}; height:{{ gv.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ game }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><sc-if value="{{ p.immune }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; left:0; top:0; width:{{ p.rd }}px; height:{{ p.rd }}px; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:50%; border:1.5px dashed #ffffff; box-shadow:0 0 0 1px rgba(16,19,26,.7), inset 0 0 0 1px rgba(16,19,26,.7)"></div></sc-if><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>3</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>8</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:4px; color:#8b90a0"><span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span>big map</span>
+</div>
+</div>
+</div>
+<div style="display:flex; flex-direction:column; gap:20px; width:540px">
+<div style="background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:16px">
+<div style="font:600 12px/16px system-ui,sans-serif; color:#8b90a0">Actual size × 2</div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ gv.l }}; top:{{ gv.t }}; width:{{ gv.w }}; height:{{ gv.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ game }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>3</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>8</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:4px; color:#8b90a0"><span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span>big map</span>
+</div>
+</div>
+</div>
+</div>
+<ul style="margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:10px; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">
+<li>240 × 123 map (up from 190 × 98), bottom-right, 12 px margin. It clears the hotbar and the Answer Questions button.</li>
+<li>Terrain is muted so the dots carry the colour. Fences and solid objects (rocks, tires, tables) are dark slate; soft obstacles (snow piles, igloos, ice blocks) are a lighter grey-blue; trees are grey-green.</li>
+<li>Your dot: blue fill, white ring, then an outer ring in your team colour, on a soft white halo.</li>
+<li>Camera view: a dark 1 px line with a white inner line, so it shows on snow and on Dark Scraps.</li>
+<li>Strip under the map: cursed and human counts, plus an M hint. It replaces a legend; the colours already match the roster.</li>
+</ul>
+</div>
+</div>
+</section>
+
+<section data-screen-label="02 Big map" style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; align-items:baseline; gap:14px"><span style="font:700 13px/16px ui-monospace,Menlo,monospace; color:#c353ff">02</span><h2 style="margin:0; font:700 20px/26px system-ui,sans-serif">Big map (M)</h2></div>
+<div style="display:flex; gap:32px; align-items:flex-start">
+<div style="position:relative; width:1100px; height:760px; border-radius:10px; overflow:hidden; background:url(uploads/minimap-big-current.png) 0 0 / 1100px 760px no-repeat; flex:none">
+<div style="position:absolute; inset:0; background:rgba(8,10,16,.45)"></div>
+<div style="position:absolute; left:10px; top:10px; width:221px; height:404px; border-radius:8px; background:url(uploads/minimap-big-current.png) -10px -10px / 1100px 760px no-repeat"></div>
+<div style="position:absolute; left:292px; top:160px; width:746px; box-sizing:border-box; padding:10px 12px 12px; background:rgba(18,20,26,.95); border:1px solid #c353ff; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.45); display:flex; flex-direction:column; gap:9px">
+<div style="display:flex; align-items:center; gap:14px; height:18px; font:600 12px/18px system-ui,sans-serif; color:#d6d9e0">
+<span style="font:700 13px/18px system-ui,sans-serif; color:#f4f5f8">Map</span>
+<span style="display:flex; align-items:center; gap:5px"><span style="width:8px; height:8px; border-radius:50%; background:#c353ff"></span>3 cursed</span>
+<span style="display:flex; align-items:center; gap:5px"><span style="width:8px; height:8px; border-radius:50%; background:#39d353"></span>9 humans</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:6px; color:#8b90a0"><span style="font:700 10px/14px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 5px">M</span>close</span>
+</div>
+<div style="position:relative; width:720px; height:370px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:6px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="720" height="370" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ gv.l }}; top:{{ gv.t }}; width:{{ gv.w }}; height:{{ gv.h }}; box-sizing:border-box; border:1.5px solid rgba(16,19,26,.7); box-shadow:inset 0 0 0 1px rgba(255,255,255,.75)"></div>
+<sc-for list="{{ big }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><sc-if value="{{ p.immune }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; left:0; top:0; width:{{ p.rd }}px; height:{{ p.rd }}px; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:50%; border:2px dashed #ffffff; box-shadow:0 0 0 1px rgba(16,19,26,.7), inset 0 0 0 1px rgba(16,19,26,.7)"></div></sc-if><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div><div style="position:absolute; left:{{ p.lx }}px; top:-7px; transform:{{ p.lt }}; white-space:nowrap; font-family:system-ui,sans-serif; font-size:11px; line-height:14px; font-weight:{{ p.lw }}; color:{{ p.lc }}; text-shadow:0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff, 0 0 3px #fff">{{ p.name }}</div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:16px; height:14px; font:500 11px/14px system-ui,sans-serif; color:#a3a9b7">
+<span style="display:flex; align-items:center; gap:6px"><span style="width:8px; height:8px; border-radius:50%; background:#4db6ff; box-shadow:0 0 0 1.5px #fff, 0 0 0 3px #39d353"></span>You</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:8px; height:8px; border-radius:50%; background:#c353ff"></span>Cursed</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:8px; height:8px; border-radius:50%; background:#39d353"></span>Human</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; box-sizing:border-box; border-radius:50%; border:1.5px dashed #fff"></span>Spawn-immune</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:8px; height:8px; box-sizing:border-box; border-radius:50%; border:1.5px solid #8a8f98"></span>Knocked out</span>
+<span style="margin-left:auto; color:#6f7584">Box = your screen</span>
+</div>
+</div>
+</div>
+<ul style="margin:0; padding:0 0 0 18px; width:540px; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">
+<li>720 × 370 map in a 746 × 450 frame. It is centred in the free space right of the mod panel (x 242 to 1088), so the panel stays usable and the frame stays below the energy counter.</li>
+<li>The game is dimmed by 45%: one full-screen fill, no blur. The mod panel draws above the dim.</li>
+<li>Fits 1100 × 760, and a 1366 × 768 Chromebook with about 650 px left after browser chrome.</li>
+<li>Names sit right of the dot, or left near the east fence. Dark text on a white halo, tinted by team. Your name is bold and blue.</li>
+<li>The header carries counts and the close hint; the legend is shown only on the big map.</li>
+<li>The corner map is hidden while the big map is open.</li>
+</ul>
+</div>
+</section>
+
+<section data-screen-label="03–08 States" style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; align-items:baseline; gap:14px"><span style="font:700 13px/16px ui-monospace,Menlo,monospace; color:#c353ff">03–08</span><h2 style="margin:0; font:700 20px/26px system-ui,sans-serif">States, small map × 2</h2></div>
+<div style="display:flex; flex-wrap:wrap; gap:24px">
+
+<div style="width:540px; background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; align-items:baseline; gap:10px"><span style="font:700 12px/16px ui-monospace,Menlo,monospace; color:#c353ff">03</span><span style="font:700 16px/22px system-ui,sans-serif">You are cursed</span></div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ cv.l }}; top:{{ cv.t }}; width:{{ cv.w }}; height:{{ cv.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ cursed }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>4</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>7</span>
+<span style="margin-left:auto; font:700 9px/14px system-ui,sans-serif; letter-spacing:.06em; text-transform:uppercase; color:#12141a; background:#c353ff; border-radius:3px; padding:0 5px">You're cursed</span>
+</div>
+</div>
+</div>
+<p style="margin:0; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Your dot stays blue. Its outer ring turns from green to purple, and the M hint in the strip becomes a purple “You're cursed” tag.</p>
+</div>
+
+<div style="width:540px; background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; align-items:baseline; gap:10px"><span style="font:700 12px/16px ui-monospace,Menlo,monospace; color:#c353ff">04</span><span style="font:700 16px/22px system-ui,sans-serif">Lobby</span></div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:160px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 2400 1600" preserveAspectRatio="none" width="240" height="160" style="display:block"><use href="#lobby" width="2400" height="1600"></use></svg></div>
+<div style="position:absolute; left:{{ lv.l }}; top:{{ lv.t }}; width:{{ lv.w }}; height:{{ lv.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ lobby }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#f4c430"></span>7 in lobby</span>
+<span style="margin-left:auto; color:#8b90a0">Waiting for host</span>
+</div>
+</div>
+</div>
+<p style="margin:0; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Everyone is gold, and your outer ring is gold too. The frame keeps its 240 px longest side and takes the lobby's proportions (shape shown here is illustrative). The strip shows one count.</p>
+</div>
+
+<div style="width:540px; background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; align-items:baseline; gap:10px"><span style="font:700 12px/16px ui-monospace,Menlo,monospace; color:#c353ff">05 · 06</span><span style="font:700 16px/22px system-ui,sans-serif">Spawn-immune and knocked out</span></div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<sc-for list="{{ status }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><sc-if value="{{ p.immune }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; left:0; top:0; width:{{ p.rd }}px; height:{{ p.rd }}px; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:50%; border:1.5px dashed #ffffff; box-shadow:0 0 0 1px rgba(16,19,26,.7), inset 0 0 0 1px rgba(16,19,26,.7)"></div></sc-if><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>3</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>5</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:4px; color:#8b90a0"><span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span>big map</span>
+</div>
+</div>
+</div>
+<p style="margin:0; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Immune: a dashed white ring with a dark lining on both sides, readable on snow and on Dark Scraps (one immune player stands in each here). Knocked out: a hollow grey dot, drawn under everyone (bottom right of Dry Grass).</p>
+</div>
+
+<div style="width:540px; background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; align-items:baseline; gap:10px"><span style="font:700 12px/16px ui-monospace,Menlo,monospace; color:#c353ff">07</span><span style="font:700 16px/22px system-ui,sans-serif">Crowded class, 46 players</span></div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ xv.l }}; top:{{ xv.t }}; width:{{ xv.w }}; height:{{ xv.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ crowd }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><sc-if value="{{ p.immune }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; left:0; top:0; width:{{ p.rd }}px; height:{{ p.rd }}px; transform:translate(-50%,-50%); box-sizing:border-box; border-radius:50%; border:1.5px dashed #ffffff; box-shadow:0 0 0 1px rgba(16,19,26,.7), inset 0 0 0 1px rgba(16,19,26,.7)"></div></sc-if><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>{{ crowdZ }}</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>{{ crowdH }}</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:4px; color:#8b90a0"><span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span>big map</span>
+</div>
+</div>
+</div>
+<p style="margin:0; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Above 30 players, other dots shrink to a 3 px radius. Order is knocked out, humans, cursed, then you. Here you are inside the cursed pack near the Frozen Lake; the white halo and team ring keep you visible.</p>
+</div>
+
+<div style="width:540px; background:#161920; border:1px solid #262a33; border-radius:12px; padding:22px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; align-items:baseline; gap:10px"><span style="font:700 12px/16px ui-monospace,Menlo,monospace; color:#c353ff">08</span><span style="font:700 16px/22px system-ui,sans-serif">Dots at the edge</span></div>
+<div style="zoom:2; width:254px">
+<div style="width:254px; box-sizing:border-box; padding:6px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:10px">
+<div style="position:relative; width:240px; height:123px">
+<div style="position:absolute; inset:0; overflow:hidden; border-radius:4px"><svg viewBox="0 0 7000 3600" preserveAspectRatio="none" width="240" height="123" style="display:block"><use href="#arena" width="7000" height="3600"></use></svg></div>
+<div style="position:absolute; left:{{ ev.l }}; top:{{ ev.t }}; width:{{ ev.w }}; height:{{ ev.h }}; box-sizing:border-box; border:1px solid rgba(16,19,26,.75); box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)"></div>
+<sc-for list="{{ edge }}" as="p" hint-placeholder-count="0"><div style="position:absolute; left:{{ p.l }}; top:{{ p.t }}; width:0; height:0"><div style="position:absolute; left:0; top:0; width:{{ p.d }}px; height:{{ p.d }}px; transform:translate(-50%,-50%); border-radius:50%; background:{{ p.bg }}; box-shadow:{{ p.sh }}"></div></div></sc-for>
+</div>
+<div style="display:flex; align-items:center; gap:9px; margin-top:5px; height:14px; padding:0 2px; font:600 10px/14px system-ui,sans-serif; color:#d6d9e0">
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#c353ff"></span>2</span>
+<span style="display:flex; align-items:center; gap:4px"><span style="width:7px; height:7px; border-radius:50%; background:#39d353"></span>5</span>
+<span style="margin-left:auto; display:flex; align-items:center; gap:4px; color:#8b90a0"><span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span>big map</span>
+</div>
+</div>
+</div>
+<p style="margin:0; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Only the terrain layer is clipped, to a 4 px inner radius. Dots are drawn unclipped, so a player on the fence or in a corner spills into the 6 px frame padding and stays whole. The camera box is clamped to the map.</p>
+</div>
+
+</div>
+</section>
+
+<section data-screen-label="09 Panel row" style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; align-items:baseline; gap:14px"><span style="font:700 13px/16px ui-monospace,Menlo,monospace; color:#c353ff">09</span><h2 style="margin:0; font:700 20px/26px system-ui,sans-serif">Hidden, and the panel's Map row</h2></div>
+<div style="display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start">
+
+<div style="display:flex; flex-direction:column; gap:10px">
+<div style="width:220px; box-sizing:border-box; padding:8px 10px 10px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:8px; display:flex; flex-direction:column; gap:5px; font:400 12px/16px system-ui,sans-serif; color:#e6e8ee">
+<div style="font-size:11px; color:#8b90a0">Map</div>
+<div style="display:flex; align-items:center; gap:14px">
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; border-radius:3px; background:#c353ff; display:flex; align-items:center; justify-content:center; font:700 10px/1 system-ui; color:#fff">✓</span>🗺 Minimap</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; box-sizing:border-box; border-radius:3px; border:1px solid #5a5f6b; background:#1c1f27"></span>Big map <span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span></span>
+</div>
+</div>
+<div style="font:600 12px/16px system-ui,sans-serif; color:#8b90a0">Default · corner map on</div>
+</div>
+
+<div style="display:flex; flex-direction:column; gap:10px">
+<div style="width:220px; box-sizing:border-box; padding:8px 10px 10px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:8px; display:flex; flex-direction:column; gap:5px; font:400 12px/16px system-ui,sans-serif; color:#e6e8ee">
+<div style="font-size:11px; color:#8b90a0">Map</div>
+<div style="display:flex; align-items:center; gap:14px">
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; border-radius:3px; background:#c353ff; display:flex; align-items:center; justify-content:center; font:700 10px/1 system-ui; color:#fff">✓</span>🗺 Minimap</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; border-radius:3px; background:#c353ff; display:flex; align-items:center; justify-content:center; font:700 10px/1 system-ui; color:#fff">✓</span>Big map <span style="font:700 9px/12px system-ui,sans-serif; color:#12141a; background:#c353ff; border-radius:3px; padding:0 4px">M</span></span>
+</div>
+</div>
+<div style="font:600 12px/16px system-ui,sans-serif; color:#8b90a0">Big map open · M chip fills</div>
+</div>
+
+<div style="display:flex; flex-direction:column; gap:10px">
+<div style="width:220px; box-sizing:border-box; padding:8px 10px 10px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:8px; display:flex; flex-direction:column; gap:5px; font:400 12px/16px system-ui,sans-serif; color:#e6e8ee">
+<div style="font-size:11px; color:#8b90a0">Map</div>
+<div style="display:flex; align-items:center; gap:14px">
+<span style="display:flex; align-items:center; gap:6px; color:#8b90a0"><span style="width:13px; height:13px; box-sizing:border-box; border-radius:3px; border:1px solid #5a5f6b; background:#1c1f27"></span>🗺 Minimap</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; box-sizing:border-box; border-radius:3px; border:1px solid #5a5f6b; background:#1c1f27"></span>Big map <span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span></span>
+</div>
+</div>
+<div style="font:600 12px/16px system-ui,sans-serif; color:#8b90a0">Corner map off · M still works</div>
+</div>
+
+<div style="display:flex; flex-direction:column; gap:10px">
+<div style="width:220px; box-sizing:border-box; padding:8px 10px 10px; background:rgba(18,20,26,.92); border:1px solid #c353ff; border-radius:8px; display:flex; flex-direction:column; gap:5px; font:400 12px/16px system-ui,sans-serif; color:#e6e8ee; opacity:.35">
+<div style="font-size:11px; color:#8b90a0">Map</div>
+<div style="display:flex; align-items:center; gap:14px">
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; border-radius:3px; background:#c353ff; display:flex; align-items:center; justify-content:center; font:700 10px/1 system-ui; color:#fff">✓</span>🗺 Minimap</span>
+<span style="display:flex; align-items:center; gap:6px"><span style="width:13px; height:13px; box-sizing:border-box; border-radius:3px; border:1px solid #5a5f6b; background:#1c1f27"></span>Big map <span style="font:700 9px/12px system-ui,sans-serif; color:#d6d9e0; border:1px solid #3a3f4b; border-radius:3px; padding:0 4px">M</span></span>
+</div>
+</div>
+<div style="font:600 12px/16px system-ui,sans-serif; color:#8b90a0">Insert pressed · panel dims, no map drawn</div>
+</div>
+
+</div>
+<p style="margin:0; max-width:760px; font:400 14px/21px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">Same 12 px system font and purple checkbox accent as the rest of the panel. The M key shows as a chip after “Big map”, which fills purple while the big map is open. An unchecked Minimap label greys out.</p>
+</section>
+
+<section data-screen-label="Theme values" style="display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; align-items:baseline; gap:14px"><span style="font:700 13px/16px ui-monospace,Menlo,monospace; color:#c353ff">§5</span><h2 style="margin:0; font:700 20px/26px system-ui,sans-serif">Theme values</h2></div>
+<div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap">
+<pre style="margin:0; width:820px; box-sizing:border-box; padding:22px 24px; background:#12141a; border:1px solid #262a33; border-radius:12px; font:400 12.5px/20px ui-monospace,Menlo,Consolas,monospace; color:#d6d9e0; white-space:pre-wrap">size: 240,
+bigSize: 720,
+corner: 'bottom-right',
+margin: 12, radius: 10,
+frame: 'rgba(18,20,26,.92)', frameBorder: '#c353ff', framePad: 6, opacity: 1,
+background: '#eef3f7',
+terrain: { 'Snowy Grass': '#cfe0d2', 'Light Scraps': '#cfd2d6', 'Dark Scraps': '#5e6168', 'Sand': '#f1dcae',
+           'Dry Grass': '#eab676', 'Dirt': '#b08862', 'Water': '#6bb6ea', 'Frozen Lake': '#b6dcf2' },
+terrainFallback: '#dde3e8',
+wall: '#3b4250', wallAlpha: 1,
+view: 'rgba(16,19,26,.75)', viewWidth: 1, showView: true,
+dot: { me: '#4db6ff', zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#8a8f98' },
+dotRadius: 3.5, meRadius: 5, dotOutline: 'rgba(16,19,26,.85)', meRing: '#ffffff', immuneRing: '#ffffff',
+labels: false,
+labelFont: '600 11px system-ui,sans-serif', labelColor: '#10131a', labelHalo: 'rgba(255,255,255,.9)',</pre>
+<div style="width:620px; box-sizing:border-box; padding:22px 24px; background:#161920; border:1px solid #262a33; border-radius:12px; display:flex; flex-direction:column; gap:12px">
+<div style="font:700 14px/20px system-ui,sans-serif">Beyond the existing knobs</div>
+<ul style="margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:8px; font:400 13px/20px system-ui,sans-serif; color:#a3a9b7; text-wrap:pretty">
+<li><b style="color:#e6e8ee">Prop classes</b> by propId: fences, rocks, tires, tables, lockers use <code>wall</code>; snow piles, igloos, ice blocks <code>#a3afbd</code>; trees <code>#8fa394</code>. Fences 1.25 px stroke.</li>
+<li><b style="color:#e6e8ee">Terrain clip</b> radius 4 (big map 6). Dots are drawn unclipped.</li>
+<li><b style="color:#e6e8ee">You</b>: 1 px dark outline, 1.5 px white ring, 2 px team-colour ring (human green / cursed purple / lobby gold), 1 px dark hairline, white halo <code>rgba(255,255,255,.4)</code> to radius 9.5.</li>
+<li><b style="color:#e6e8ee">View inner line</b>: 1 px <code>rgba(255,255,255,.7)</code> inside the dark view line.</li>
+<li><b style="color:#e6e8ee">Immune</b>: dashed ring (2/2), radius dot + 3.5, white with a dark lining inside and out.</li>
+<li><b style="color:#e6e8ee">Knocked out</b>: hollow, radius 3, 1.5 px <code>#8a8f98</code> stroke over a 30% fill.</li>
+<li><b style="color:#e6e8ee">Crowded</b>: dotRadius 3 above 30 players.</li>
+<li><b style="color:#e6e8ee">Strip</b> under the small map, 14 px, 10 px font: counts, M hint; “You're cursed” tag when you're cursed; “N in lobby · Waiting for host” before the game.</li>
+<li><b style="color:#e6e8ee">Big map</b>: dim <code>rgba(8,10,16,.45)</code> under the panel; centred in x 242 to right edge; header with counts, legend row; dot radius 5, you 6.5; labels tinted <code>#5b1590</code> cursed, <code>#14572a</code> human, <code>#6b4f00</code> lobby, you bold <code>#0a4a78</code>.</li>
+</ul>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const C = { me: '#4db6ff', zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#8a8f98' };
+    const LC = { me: '#0a4a78', zombie: '#5b1590', human: '#14572a', neutral: '#6b4f00', dead: '#4f545c' };
+    const ord = { dead: 0, human: 1, neutral: 1, zombie: 2, me: 3 };
+    const mk = (list, W, H, o = {}) => [...list].sort((a, b) => ord[a.k] - ord[b.k]).map(p => {
+      const big = !!o.big, me = p.k === 'me';
+      let d, bg, sh;
+      if (me) {
+        const ring = C[p.team];
+        bg = C.me;
+        if (big) { d = 13; sh = `0 0 0 1.5px #10131a, 0 0 0 3.5px #fff, 0 0 0 6px ${ring}, 0 0 0 7px rgba(16,19,26,.75), 0 0 0 13px rgba(255,255,255,.4)`; }
+        else { d = 10; sh = `0 0 0 1px #10131a, 0 0 0 2.5px #fff, 0 0 0 4.5px ${ring}, 0 0 0 5.5px rgba(16,19,26,.75), 0 0 0 9.5px rgba(255,255,255,.4)`; }
+      } else if (p.k === 'dead') {
+        d = big ? 9 : 6; bg = 'rgba(138,143,152,.3)'; sh = `inset 0 0 0 ${big ? 2 : 1.5}px #8a8f98`;
+      } else {
+        d = big ? 10 : (o.crowd ? 6 : 7); bg = C[p.k]; sh = `0 0 0 ${big ? 1.5 : 1}px rgba(16,19,26,.85)`;
+      }
+      const flip = p.x > W * 0.86;
+      const lx = d / 2 + (me ? 9 : 5);
+      return { l: p.x / W * 100 + '%', t: p.y / H * 100 + '%', d, bg, sh, immune: !!p.im, rd: d + (big ? 9 : 7),
+        name: me ? p.n + ' (you)' : p.n, lx: flip ? -lx : lx, lt: flip ? 'translateX(-100%)' : 'none', lc: LC[p.k], lw: me ? 700 : 600 };
+    });
+    const vr = (cx, cy, w, h, W, H) => {
+      const x = Math.max(0, Math.min(W - w, cx - w / 2)), y = Math.max(0, Math.min(H - h, cy - h / 2));
+      return { l: x / W * 100 + '%', t: y / H * 100 + '%', w: w / W * 100 + '%', h: h / H * 100 + '%' };
+    };
+    const W = 7000, H = 3600;
+    const base = [
+      { n: 'Matt', k: 'me', team: 'human', x: 1980, y: 2050 },
+      { n: 'Bravo', k: 'zombie', x: 5800, y: 3050 },
+      { n: 'Kilo', k: 'zombie', x: 2560, y: 1760 },
+      { n: 'Juno', k: 'zombie', x: 4300, y: 760 },
+      { n: 'Matthew', k: 'human', x: 3150, y: 3420 },
+      { n: 'Alpha', k: 'human', x: 3050, y: 190 },
+      { n: 'Nova', k: 'human', x: 6650, y: 1150 },
+      { n: 'Pip', k: 'human', x: 1450, y: 2950 },
+      { n: 'Rex', k: 'human', x: 5250, y: 1850 },
+      { n: 'Ivy', k: 'human', x: 1000, y: 650 },
+      { n: 'Otto', k: 'human', x: 6100, y: 2500 },
+    ];
+    const bigList = [...base, { n: 'Lumi', k: 'human', x: 3950, y: 2620, im: true }];
+    const cursedList = [
+      { n: 'Matt', k: 'me', team: 'zombie', x: 4150, y: 1950 },
+      { n: 'Bravo', k: 'zombie', x: 5800, y: 3050 }, { n: 'Kilo', k: 'zombie', x: 2560, y: 1760 }, { n: 'Juno', k: 'zombie', x: 4300, y: 760 },
+      { n: 'Alpha', k: 'human', x: 3050, y: 190 }, { n: 'Nova', k: 'human', x: 6650, y: 1150 }, { n: 'Pip', k: 'human', x: 1450, y: 2950 },
+      { n: 'Rex', k: 'human', x: 5050, y: 1800 }, { n: 'Ivy', k: 'human', x: 1000, y: 650 }, { n: 'Otto', k: 'human', x: 6100, y: 2500 }, { n: 'Matthew', k: 'human', x: 3150, y: 3420 },
+    ];
+    const LW = 2400, LH = 1600;
+    const lobbyList = [
+      { n: 'Matt', k: 'me', team: 'neutral', x: 1200, y: 600 },
+      { n: 'A', k: 'neutral', x: 700, y: 900 }, { n: 'B', k: 'neutral', x: 1500, y: 750 }, { n: 'C', k: 'neutral', x: 1650, y: 1150 },
+      { n: 'D', k: 'neutral', x: 900, y: 1100 }, { n: 'E', k: 'neutral', x: 1300, y: 1050 }, { n: 'F', k: 'neutral', x: 2000, y: 700 },
+    ];
+    const statusList = [
+      { n: 'Matt', k: 'me', team: 'human', x: 1300, y: 1950 },
+      { n: 'Bravo', k: 'zombie', x: 4900, y: 2900, im: true }, { n: 'Kilo', k: 'zombie', x: 2600, y: 1800 }, { n: 'Juno', k: 'zombie', x: 4300, y: 700 },
+      { n: 'Pip', k: 'human', x: 3300, y: 1750, im: true }, { n: 'Alpha', k: 'human', x: 3050, y: 190 }, { n: 'Nova', k: 'human', x: 6650, y: 1150 },
+      { n: 'Otto', k: 'human', x: 6100, y: 2500 },
+      { n: 'Quinn', k: 'dead', x: 5300, y: 1300 },
+    ];
+    let s = 7;
+    const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+    const crowdList = [{ n: 'Matt', k: 'me', team: 'human', x: 3900, y: 1780 }];
+    for (let i = 0; i < 14; i++) { const a = rnd() * 6.283, r = Math.sqrt(rnd()) * (i < 8 ? 500 : 1500); crowdList.push({ n: 'z' + i, k: 'zombie', x: 3900 + Math.cos(a) * r * 1.4, y: 1780 + Math.sin(a) * r }); }
+    for (let i = 0; i < 29; i++) crowdList.push({ n: 'h' + i, k: 'human', x: 250 + rnd() * 6500, y: 250 + rnd() * 3100, im: i === 3 || i === 17 });
+    crowdList.push({ n: 'd1', k: 'dead', x: 1700, y: 2300 }, { n: 'd2', k: 'dead', x: 6000, y: 700 });
+    const edgeList = [
+      { n: 'Matt', k: 'me', team: 'human', x: 90, y: 3520 },
+      { n: 'a', k: 'human', x: 80, y: 1700 }, { n: 'b', k: 'zombie', x: 6930, y: 900 }, { n: 'c', k: 'human', x: 3500, y: 3540 },
+      { n: 'd', k: 'human', x: 6950, y: 60 }, { n: 'e', k: 'zombie', x: 400, y: 3400 }, { n: 'f', k: 'human', x: 4200, y: 60 }, { n: 'g', k: 'human', x: 2200, y: 2400 },
+    ];
+    return {
+      game: mk(base, W, H), big: mk(bigList, W, H, { big: true }), gv: vr(1980, 2050, 1650, 1140, W, H),
+      cursed: mk(cursedList, W, H), cv: vr(4150, 1950, 1650, 1140, W, H),
+      lobby: mk(lobbyList, LW, LH), lv: vr(1200, 600, 1650, 1140, LW, LH),
+      status: mk(statusList, W, H),
+      crowd: mk(crowdList, W, H, { crowd: true }), xv: vr(3900, 1780, 1650, 1140, W, H),
+      crowdZ: 14, crowdH: 30,
+      edge: mk(edgeList, W, H), ev: vr(90, 3520, 1650, 1140, W, H),
+    };
+  }
+}
+</script>
+</body>
+</html>
