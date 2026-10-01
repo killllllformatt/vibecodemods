@@ -26,7 +26,9 @@ Everything is authored in `stax-hub.js`. The build minifies it into the bookmark
 node build.mjs
 ```
 
-This regenerates `bookmarklet.txt`, `install.html`, and `index.html` (the GitHub Pages entry point). Don't hand-edit those three — edit `stax-hub.js` and rebuild.
+This regenerates `bookmarklet.txt`, `bookmarklet-offline.txt`, `install.html`, and `index.html` (the GitHub Pages entry point). Don't hand-edit those — edit `stax-hub.js` and rebuild.
+
+**Auto-update:** the installed bookmark (`bookmarklet.txt`) is a ~370-char loader that fetches `stax-hub.js` from GitHub Pages on every click, so pushing to `main` updates every user — no re-install. Pages caches for up to ~10 min after a deploy; the loader's `?t=` timestamp bypasses the browser cache. `bookmarklet-offline.txt` is the old fully self-contained build, offered on the install page for networks that block github.io.
 
 ## How it works
 

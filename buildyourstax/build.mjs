@@ -17,9 +17,21 @@ new Function(code); // syntax check — throws if the minify broke something
 // Browsers percent-decode a javascript: URL once before running it, so only escape what would
 // break or be altered by URL parsing: % itself, newlines, # (fragment), " < > ` (attribute and
 // URL-parser trouble), and non-ASCII. Plain spaces are left as-is (~40% smaller).
-const href = 'javascript:' + code.replace(/[%\n\r#"<>`]|[^\x20-\x7e]/gu, encodeURIComponent);
+const ESC = /[%\n\r#"<>`]|[^\x20-\x7e]/gu;
+const href = 'javascript:' + code.replace(ESC, encodeURIComponent);
 if (decodeURIComponent(href.slice(11)) !== code) throw new Error('bookmarklet encoding is not reversible');
-writeFileSync(new URL('./bookmarklet.txt', import.meta.url), href);
+writeFileSync(new URL('./bookmarklet-offline.txt', import.meta.url), href);
+
+// The bookmark users install is a tiny loader that pulls the latest stax-hub.js from GitHub Pages
+// on every click, so pushing a change updates everyone with no re-install. The timestamp skips
+// Pages' 10-minute cache. The full self-contained build above stays as an offline fallback for
+// networks that block github.io.
+const HUB_URL = 'https://killllllformatt.github.io/vibecodemods/buildyourstax/stax-hub.js';
+const loader = `(()=>{const s=document.createElement('script');s.src='${HUB_URL}?t='+Date.now();s.onload=()=>s.remove();s.onerror=()=>{s.remove();alert('vibecodemods: could not download STAX Hub. Check your connection, or use the offline version from the install page.')};document.head.appendChild(s)})()`;
+new Function(loader);
+const escapeHref = c => c.replace(ESC, encodeURIComponent);
+const loaderHref = 'javascript:' + escapeHref(loader);
+writeFileSync(new URL('./bookmarklet.txt', import.meta.url), loaderHref);
 
 // logo is embedded so install.html works as a single file (shared, downloaded, or on Pages)
 const logo = 'data:image/png;base64,' + readFileSync(new URL('./assets/vibecodemods-logo.png', import.meta.url)).toString('base64');
@@ -80,10 +92,10 @@ footer{color:var(--dim);font-size:12px;text-align:center}
 </section>
 
 <section class="drop">
-<a class="bm" href="${attr(href)}" title="Drag me to your bookmarks bar" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar, then click the bookmark while you\\'re in a STAX game.')">
+<a class="bm" href="${attr(loaderHref)}" title="Drag me to your bookmarks bar" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar, then click the bookmark while you\\'re in a STAX game.')">
 <svg viewBox="0 0 30 20" fill="currentColor"><path d="M7.5 2.4C7.8 4.8 8.3 5.3 10.1 5.6 8.3 5.9 7.8 6.4 7.5 8.8 7.2 6.4 6.7 5.9 4.9 5.6 6.7 5.3 7.2 4.8 7.5 2.4z"/><path d="M4.1 7.8C1.6 10 1.2 13.2 4.5 14.8 7.5 16.2 13 16.4 23.8 14.4 13.5 15.6 8 15.4 5.2 14 2.6 12.8 2.4 10.2 4.1 7.8z"/></svg>
 STAX Hub</a>
-<small>↑ Drag this button onto your bookmarks bar</small>
+<small>↑ Drag this button onto your bookmarks bar. It updates itself, so you only install it once.</small>
 </section>
 
 <section>
@@ -107,6 +119,14 @@ STAX Hub</a>
 <li>Name it <b>STAX Hub</b> and paste the code into the <b>URL</b> box.</li>
 </ol>
 <div class="row"><div class="code" id="code"></div><button class="copy" id="copy" type="button">Copy code</button></div>
+</div>
+</section>
+
+<section>
+<h2>Blocked network? Offline version</h2>
+<div class="card">
+<p>If the bookmark says it couldn't download (some school filters block github.io), use this self-contained version instead. It works without downloading anything, but won't update itself.</p>
+<div class="row"><div class="code" id="code2"></div><button class="copy" id="copy2" type="button">Copy offline code</button></div>
 </div>
 </section>
 
@@ -138,18 +158,22 @@ STAX Hub</a>
 <footer>vibecodemods/ · not affiliated with NGPF or STAX</footer>
 </main>
 <script>
-const href = document.querySelector('.bm').getAttribute('href');
-document.getElementById('code').textContent = href.slice(0, 120) + '…';
-document.getElementById('copy').onclick = async e => {
-  try { await navigator.clipboard.writeText(href); }
-  catch (err) { const t = document.createElement('textarea'); t.value = href; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
-  e.target.textContent = 'Copied!';
-  setTimeout(() => e.target.textContent = 'Copy code', 1800);
+const wire = (codeId, btnId, href) => {
+  const label = document.getElementById(btnId).textContent;
+  document.getElementById(codeId).textContent = href.slice(0, 120) + (href.length > 120 ? '…' : '');
+  document.getElementById(btnId).onclick = async e => {
+    try { await navigator.clipboard.writeText(href); }
+    catch (err) { const t = document.createElement('textarea'); t.value = href; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+    e.target.textContent = 'Copied!';
+    setTimeout(() => e.target.textContent = label, 1800);
+  };
 };
+wire('code', 'copy', document.querySelector('.bm').getAttribute('href'));
+wire('code2', 'copy2', ${JSON.stringify(href)});
 </script>
 </body>
 </html>
 `;
 writeFileSync(new URL('./install.html', import.meta.url), html);
 writeFileSync(new URL('./index.html', import.meta.url), html); // GitHub Pages entry point
-console.log(`bookmarklet: ${href.length} chars (source ${src.length})`);
+console.log(`loader: ${loaderHref.length} chars, offline: ${href.length} chars (source ${src.length})`);
