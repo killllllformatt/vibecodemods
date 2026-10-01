@@ -10,6 +10,8 @@
 //   Auto-answer: sends MESSAGE_FOR_DEVICE {key:'answered', deviceId, data:{answer}} straight to the
 //   server — no question screen needed. Each question is answered ONCE: the server counts an answer
 //   to a question you've already moved past as WRONG, so we never resend until it advances.
+// - Fun (client-side only — nobody else sees it): spinbot, Shrek skin (you or everyone), or any
+//   image you pick as your skin.
 // Insert = hide/show panel. Click the bookmarklet again to remove everything.
 (() => {
   if (window.__snowy) { window.__snowy.destroy(); return; }
@@ -59,7 +61,7 @@
   const isSnowy = () => { try { return /\/modes\/snowInfection\//.test(JSON.parse(room().state.mapSettings).musicUrl || ''); } catch { return false; } };
 
   // ---- config + colors ----
-  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, hidden: false };
+  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, hidden: false };
   const COL = { zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#666' };
 
   // team "2" = cursed, "1" = human in snowInfection. Lobby / other modes / unassigned → neutral.
@@ -158,6 +160,88 @@
   };
   raf = requestAnimationFrame(loop);
   cleanups.push(() => cancelAnimationFrame(raf));
+
+  // ---- fun (client-side only: changes what YOU see, never sent to the server) ----
+  // Runs on Phaser's prerender (after the game positions sprites, before it draws), so our tweaks
+  // win every frame. Skins are an image laid over the character's sprite, which is hidden.
+  const SHREK_URL = 'https://upload.wikimedia.org/wikipedia/en/4/4d/Shrek_%28character%29.png'; // CORS-enabled
+  const SKIN_H = 95;          // world px, a bit taller than a normal character
+  const SPIN_DEG = 14;        // per frame
+  const textures = {};        // key -> 'loading' | 'ready' | 'failed'
+  const loadTexture = (key, src) => {
+    if (!scene || textures[key] === 'ready' || textures[key] === 'loading') return;
+    textures[key] = 'loading';
+    const img = new Image(); img.crossOrigin = 'anonymous';   // WebGL can't use cross-origin images without CORS
+    img.onload = () => { try { if (scene.textures.exists(key)) scene.textures.remove(key); scene.textures.addImage(key, img); textures[key] = 'ready'; } catch { textures[key] = 'failed'; } };
+    img.onerror = () => { textures[key] = 'failed'; };
+    img.src = src;
+  };
+  let customKey = null;       // set when you pick your own image
+  const skinFor = ch => {
+    if (ch.isMain) { if (customKey) return customKey; if (cfg.shrek || cfg.shrekAll) return 'vcm-shrek'; return null; }
+    return cfg.shrekAll ? 'vcm-shrek' : null;
+  };
+  const overlays = new Map(); // character id -> {img, key, sp}
+  let spinAngle = 0, spunSprite = null;
+  const spriteOf = ch => ch && ch.spine && (ch.spine.spine || ch.spine);
+  const dropOverlay = (id) => {
+    const o = overlays.get(id); if (!o) return;
+    try { o.img.destroy(); } catch {}
+    try { o.sp.setVisible(true); } catch {}   // the game re-hides it next frame if it's off camera
+    overlays.delete(id);
+  };
+  const funTick = () => {
+    if (!scene) return;
+    let chars; try { chars = [...scene.characterManager.characters.values()]; } catch { return; }
+    if (cfg.shrek || cfg.shrekAll) loadTexture('vcm-shrek', SHREK_URL);
+    const alive = new Set();
+    for (const ch of chars) {
+      const sp = spriteOf(ch); if (!sp) continue;
+      const key = skinFor(ch);
+      const onCam = ch.isMain || (ch.culling && ch.culling.isInCamera);
+      if (!key || textures[key] !== 'ready' || !onCam) { if (overlays.has(ch.id)) dropOverlay(ch.id); continue; }
+      alive.add(ch.id);
+      let o = overlays.get(ch.id);
+      if (o && o.key !== key) { dropOverlay(ch.id); o = null; }
+      if (!o) {
+        const img = scene.add.image(sp.x, sp.y, key).setOrigin(0.5, 0.5);   // centre pivot so spinning looks like spinning
+        img.setScale(SKIN_H / img.height);
+        o = { img, key, sp }; overlays.set(ch.id, o);
+      }
+      sp.setVisible(false);
+      o.img.setPosition(sp.x, sp.y - SKIN_H / 2).setDepth(sp.depth + 0.5);   // sprite is anchored at the feet
+      o.img.setFlipX(sp.scaleX < 0);            // face the way you're walking
+      o.img.setAngle(ch.isMain && cfg.spin ? spinAngle : 0);
+    }
+    for (const id of [...overlays.keys()]) if (!alive.has(id)) dropOverlay(id);
+    // Spinbot: rotate your own sprite (or your skin, above).
+    const me = chars.find(c => c.isMain), mySp = spriteOf(me);
+    if (cfg.spin && mySp) { spinAngle = (spinAngle + SPIN_DEG) % 360; mySp.angle = spinAngle; spunSprite = mySp; }
+    else if (spunSprite) { spunSprite.angle = 0; spunSprite = null; spinAngle = 0; }
+  };
+  let funHooked = false;
+  const onPre = () => { try { funTick(); } catch {} };
+  const funHook = setInterval(() => {
+    if (funHooked || !scene || !scene.sys || !scene.sys.game) return;
+    scene.sys.game.events.on('prerender', onPre); funHooked = true;
+  }, 300);
+  cleanups.push(() => {
+    clearInterval(funHook);
+    try { scene.sys.game.events.off('prerender', onPre); } catch {}
+    for (const id of [...overlays.keys()]) dropOverlay(id);
+    if (spunSprite) spunSprite.angle = 0;
+  });
+  // Pick any image from your computer as your skin (read locally as a data: URL — no upload).
+  const pickImage = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => { const key = 'vcm-custom-' + Date.now(); loadTexture(key, rd.result); customKey = key; };
+      rd.readAsDataURL(f);
+    };
+    inp.click();
+  };
 
   // ---- questions ----
   // Question devices: gimkitLiveQuestion. The main one gives the per-role reward (+energy as a human,
@@ -297,6 +381,12 @@
   group('ESP', [['🧟 Cursed', 'cursed'], ['🏃 Humans', 'humans']]);
   group('Draw', [['Boxes', 'boxes'], ['Tracers', 'tracers'], ['Names', 'names'], ['Health', 'health'], ['List', 'list']]);
   group('Answers', [['Highlight', 'highlight'], ['Auto-answer', 'autoAnswer']]);
+  group('Fun (only you see it)', [['🌀 Spin', 'spin'], ['🟢 Shrek', 'shrek'], ['Everyone is Shrek', 'shrekAll']]);
+  const funRow = document.createElement('div'); funRow.style.cssText = 'display:flex;gap:6px;margin:2px 0 4px';
+  const mkBtn = (txt, fn) => { const b = document.createElement('button'); b.textContent = txt; b.onclick = fn;
+    b.style.cssText = 'flex:1;padding:3px 6px;border-radius:5px;border:1px solid #c353ff;background:transparent;color:#e9ecf1;font:11px system-ui;cursor:pointer'; return b; };
+  funRow.append(mkBtn('Custom skin…', pickImage), mkBtn('Clear skin', () => { customKey = null; }));
+  panel.appendChild(funRow);
   const stat = document.createElement('div'); stat.style.cssText = 'opacity:.7;margin:3px 0'; panel.appendChild(stat);
   const counts = document.createElement('div'); counts.style.cssText = 'font-weight:700;margin:2px 0'; panel.appendChild(counts);
   const roster = document.createElement('div'); roster.style.cssText = 'display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto'; panel.appendChild(roster);
@@ -342,7 +432,7 @@
   window.__snowy = {
     cfg, ans,
     get scene() { return scene; }, get store() { return store; },
-    api: { phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind },
+    api: { phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures },
     destroy() { cleanups.forEach(f => { try { f(); } catch {} }); canvas.remove(); panel.remove(); delete window.__snowy; },
   };
 })();
