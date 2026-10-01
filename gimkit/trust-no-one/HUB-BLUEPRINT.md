@@ -1,153 +1,288 @@
 # Trust No One — hub section blueprint
 
-Hand-off spec for **Claude Design** to build the Trust No One section of the unified Gimkit hub.
-We are not building the UI here. All behavior already exists and is live-verified in
-[`tno-reveal.js`](tno-reveal.js) — that file is the logic library; every control below maps to a
-function or state field in it. Claude Design wires the UI to those and does not re-derive the
-protocol. Make it look **identical to the STAX hub** (`../../buildyourstax/`).
+> **For Claude Design.** You're building the UI for the Trust No One section of the vibecodemods
+> Gimkit hub. **The logic already exists and is live-verified** in [`tno-reveal.js`](tno-reveal.js).
+> You build the panel on top of its API (§3). You don't touch the protocol. Everything below marked
+> ✅ was checked in real 4-player games (last on 2026-10-01).
 
-## Shell — identical to the STAX hub
-- Floating, draggable panel (mouse + touch), default top-right; tab bar on top, one pane below.
-- Compact / Chromebook-friendly. **No function-key or any keybind for features** — Chromebooks
-  lack F-keys. Only show/hide reuses the STAX hub's existing toggle key (backtick / Insert). Every
-  feature is an on-screen control, never a keybind.
-- Minimize button; active tab + panel position persisted in `localStorage` (`tnoHubUI`).
-- Only the open tab refreshes (~1s), only while visible.
-- Risky/visible actions carry a **danger label** (as STAX does).
+**Contents:** 1 · What you're building · 2 · Look & feel · 3 · Data API · 4 · Game lifecycle ·
+5 · Header · 6 · Tabs · 7 · Edge cases · 8 · Delivery · 9 · Open questions · 10 · Reference
 
-## Always-visible header strip
-`game code · role (🔪 impostor / 🔍 crewmate / 👻 eliminated) · ⚡ energy · impostors left · investigations left · meetings left`
-Sources: game code = `new URLSearchParams(location.search).get('gc')` (the join URL keeps `?gc=` in
-game; it is NOT in React/player state — `gameValues.gameCode` is null on a player, so use the URL
-and fall back to "—" if absent). Then `myRole()`, `balanceVal()`, roster count, `invLeft()`,
-`meetLeft()`, `amEliminated()`. Energy ⚡ is a prominent live counter (also shown on the Actions tab).
+---
 
-> **Confirmed on a cold mid-game inject:** full roster with every true role, who's "you", and
-> ejected/clear flags all resolve (roster via `IMPOSTER_MODE_REQUEST_PEOPLE`, room via
-> `joinDetails.roomId`), plus the game code from the URL. The socket is captured on the next
-> outgoing frame / engine.io ping (≤~25s) if the inject lands on a totally idle screen.
+## 1. What you're building
 
-### Phase-aware display  *(driven by `imposter.status`)*
-The header adapts to the game phase. Confirmed status values: **`intro`** = waiting room (pre-liftoff),
-**`questions`** = in game. Others exist for meeting/voting/results — map them as seen (the tool already
-re-requests the roster on every status change).
+A floating panel injected into a Gimkit **Trust No One** game (the Among Us-style mode). Five tabs:
 
-| Field | Waiting room (`intro`) | In game (`questions`+) | Eliminated | Game over |
+| Tab | One-liner |
+|---|---|
+| **Roles** (default) | Every player's real role. The server sends this to every client. |
+| **Actions** | Mission Control automation: pick a target, run investigations / sabotage / donate once or on auto. Plus auto-vote. |
+| **Answers** | Correct-answer highlight, auto-answer with a speed control, your stats. |
+| **Log** | Running feed of investigation results, notes, ejections. |
+| **Settings** | Interval, opacity, reset position. |
+
+Above the tabs is an always-visible **header strip** with role, ⚡ energy and the counts (§5).
+
+---
+
+## 2. Look & feel: match the STAX hub exactly
+
+Reference: [`design/stax-hub-reference.png`](design/stax-hub-reference.png). Source CSS is in
+[`../../buildyourstax/stax-hub.js`](../../buildyourstax/stax-hub.js) (`// ---------- UI ----------`).
+Lift the CSS from there rather than re-creating it.
+
+**Tokens (verbatim from STAX):**
+```css
+--bg:#06060a; --s1:rgba(255,255,255,.035); --s2:rgba(255,255,255,.06); --s3:rgba(255,255,255,.11);
+--ln:rgba(255,255,255,.07); --ln2:rgba(255,255,255,.13);
+--fg:#f3f2f8; --dim:#8d8b9c; --acc:#a58bff; --acc2:#58c7ff;
+--grad:linear-gradient(90deg,#8b6cff,#58c7ff); --on:#08070d; --red:#ff7a70;
+font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+panel: width 336px; radius 14px; z-index 2147483647; hard CSS reset on all children (Gimkit's CSS leaks)
+```
+**Components to reuse:** the `.hd` drag header with the vibecodemods wordmark, the 5-column `.tabs` with
+a sliding `.pill`, `.card`, `.kv` rows, `.btn` / `.btn.pri`, `.lbl` section captions, the toast, and the
+`.dot.live` / `.dot.warn` status dot.
+
+**TNO-specific colours** (keep these meanings everywhere):
+| Meaning | Colour |
+|---|---|
+| Impostor 🔪 | `--red` `#ff7a70` |
+| Crewmate 🔍 | green `#56d364` |
+| You | outline `--ln2` + "(you)" in `--dim` |
+| Ejected | 45% opacity + strikethrough |
+| Eliminated (you) 👻 | `--dim` |
+| Correct-answer highlight (in-game) | `4px solid #56d364`, offset `-6px` (already implemented) |
+
+**Shell rules (same as STAX):**
+- Draggable by the header (mouse + touch). Minimize button; double-click the header also minimizes.
+- **Default position: top-right but pushed below Gimkit's top bar (`top: 72px; right: 12px`).** At
+  `top:12px` the panel covers Gimkit's own ⚡ counter. See [`design/tno-in-game-current-tool.png`](design/tno-in-game-current-tool.png).
+- Persist active tab + position in `localStorage` key `tnoHubUI` (try/catch every access).
+- **No feature keybinds.** Chromebooks have no F-keys. The only key is show/hide: backtick or Insert, same as STAX.
+- Only the open tab refreshes (~1 s), and only while the panel is visible and not minimized.
+- Danger-labelled sections, as STAX does, for anything other players can notice: Actions and Answers.
+- Low-end friendly: no web fonts, images, blur or libraries; only animate transform/opacity/colour.
+
+---
+
+## 3. Data API: everything the UI reads and calls
+
+`tno-reveal.js` installs `window.__tnoReveal` (call it `R`). **Never re-derive the protocol.** If you
+need something that isn't here, add a thin getter to `R.api` in the script.
+
+### State (plain fields, read any time)
+| Field | Type | Meaning |
+|---|---|---|
+| `R.people` | `[{id, name, role:'imposter'\|'detective', votedOff, markedAsClear, canNeverBeClear}]` | Full roster with true roles. Empty until the server sends it (§7). |
+| `R.me` | `{id, name, role, votedOff, currentVote, notes, blendingIn, ...}` or `null` | You. `byName:true` when resolved by the name fallback. |
+| `R.status` | string | Last phase seen on the wire (prefer `R.api.phase()`). |
+| `R.gameStatus` | `''` \| `'gameplay'` \| `'results'` | `'results'` = **game over** (§4). |
+| `R.target` | player id or `''` | Selected target. **Auto-clears to `''` when that player is ejected.** |
+| `R.on` | `{[shopItemId]: true}` | Which Auto toggles are armed. The engine reads this. |
+| `R.auto` | bool | Auto-answer on/off. |
+
+### Getters (`R.api.*`, functions, cheap enough to call each refresh)
+| Getter | Returns |
+|---|---|
+| `phase()` | `'intro'`, `'questions'`, `'discussion'`, `'voting'`, `'votingResult'` (§4) |
+| `connected()` | true once the socket and room are known (can take ≤25 s on a cold inject) |
+| `role()` | `'imposter'`, `'detective'` or `'?'` |
+| `eliminated()` | bool, you were voted out |
+| `balance()` | ⚡ energy (number) |
+| `investigationsLeft()` | shared investigation pool (starts at 40 with 4 players) |
+| `meetingsLeft()` | shared meeting pool (starts at 2). **Host-called meetings use it up too.** |
+| `impostorsLeft()` | live impostor count from the roster |
+| `shopItems()` | **Authoritative list of what you can buy right now:** `[{id, name, cost, description, icon, background}]`. Role-aware, alive/dead-aware, and respects the teacher's meeting setting. |
+| `stats()` | `{correct, incorrect, total, accuracy (0–1), streak}` or `null`. Includes questions answered before the inject. |
+| `currentQuestion()` | `{text, answers:[{text, correct, ...}]}` or `null` |
+| `gameCode()` | code from the URL `?gc=` or `null`. **Usually `null`** (see §5). |
+
+### Actions
+| Call | Effect |
+|---|---|
+| `R.purchase(itemId, targetId?)` | One Mission Control action. Leave out `targetId` for `meeting` / `blendIn`. Returns false if not connected. |
+| `R.vote(targetId)` | Meeting vote. Only valid while `phase()==='voting'`. Re-sending changes your vote. |
+| `R.requestPeople()` | Ask the server to resend the roster (already done automatically on every phase change). |
+
+The script's built-in engine (`autoActionTick`, every 250 ms with its own 4 s throttle) already fires
+armed actions. Set `R.on[id] = true/false` and `R.target`; don't build a second engine. Change the
+engine's ordering in the script (see §6.2).
+
+**The current tiny panel in the script** (`render()` / `panel`) is the old debug UI. When the hub
+wraps this file, delete that block and the F8 listener. Keep everything above `// --- panel ---`.
+
+---
+
+## 4. Game lifecycle (all ✅ observed)
+
+```
+ lobby            liftoff           meeting called (student or host)
+ ──────► intro ──────────► questions ──► discussion ──► voting ──► votingResult ──┐
+                              ▲                                                    │
+                              └──────────────── host continues ◄───────────────────┘
+                                                                     │ last impostor out, or
+                                                                     ▼ impostors ≥ crew
+                                                  R.gameStatus = 'results'  (game over)
+```
+- `phase()` comes from `imposter.status`. **Game over is a separate signal:** `GAME_STATUS: 'results'`.
+  At game over, `phase()` stays stuck on its last value (`'votingResult'`), so always check
+  `R.gameStatus === 'results'` first.
+- Winner isn't sent to players as data. Derive it: `impostorsLeft()===0` → "Crewmates win", otherwise "Impostors win".
+- The roster is re-requested automatically on every phase change. Ejections only show up that way.
+- `meetingsLeft()` drops by one at `votingResult`, not when the meeting is called.
+
+---
+
+## 5. Header strip (always visible)
+
+`● status · 🔪/🔍/👻 role · ⚡ energy · impostors left · investigations left · meetings left`
+
+| Field | intro (lobby) | questions / meeting | You're eliminated | Game over |
 |---|---|---|---|---|
-| Status label | "Waiting to start" | "Connected / In game" | "👻 Eliminated" | "Game over — <winner>" |
-| Game code (URL) | ✅ | ✅ | ✅ | ✅ |
-| Your name (`user.name`) | ✅ | ✅ | ✅ | ✅ |
-| Players count | ❌ host-only pre-start — show "—" | ✅ roster total **and** alive (exclude `votedOff`) | ✅ | ✅ |
-| Your role | ❌ not assigned — "revealed at liftoff" | ✅ | ✅ | ✅ |
-| Energy / investigations / meetings left | ❌ not set | ✅ | ✅ (energy only) | — |
-| Roster + Actions tabs | roster empty ("waiting…"), actions disabled | full | donate-only | frozen |
+| Status dot + label | "Waiting to start" | "In game" / "Meeting" / "Voting" | "👻 Eliminated" | "Game over: Crewmates/Impostors win" |
+| Role | "revealed at liftoff" | ✅ | 👻 + original role | ✅ |
+| ⚡ energy | — | ✅ (big, live) | ✅ (for donating) | — |
+| Impostors / investigations / meetings left | — | ✅ | ✅ | frozen |
+| Players | — | total + alive (`!votedOff`) | ✅ | ✅ |
 
-Player count has **no player-side source** (`gameValues.players` is empty on a player in both phases,
-`gameValues.gameCode` is null) — derive it from the roster once in game; show "—" in the lobby.
+- **Game code: optional, low priority.** It's only available when the player joined by a link with
+  `?gc=`. Typing the code at gimkit.com/join leaves it nowhere in player state (✅ searched React props,
+  MobX, local/session storage). Show it if `gameCode()` returns one; otherwise leave the slot out (don't show "—").
+- Starting energy: impostors start at **⚡10**, crewmates at **⚡0** (✅ two games).
 
-## Tabs: Roles · Actions · Answers · Log · Settings
+---
 
-### 1. Roles  *(reveal — default tab)*
-Live roster: every player's true role (🔪 impostor / 🔍 crewmate), **you** outlined, `ejected` /
-`clear` tags, impostors-left count. Read-only. Source: `S.people`, `S.me`.
+## 6. Tabs
 
-### 2. Actions  *(Mission Control — danger-labeled)*
-**Target dropdown** (roster, excludes self) → `S.target`.
+### 6.1 Roles (default tab)
+- One row per player, **impostors first**: icon, name, "(you)", tags `ejected` / `clear`.
+- Counter above the list: "N impostors left".
+- Empty state: "Connecting…" when `!connected()`, "Waiting for liftoff…" during `intro`.
+- Read-only. Sources: `R.people`, `R.me`.
 
-**Full action catalog is always shown (both roles), with your role's actions pushed to the top and
-the other role's rows greyed out and non-clickable.** When eliminated, grey out **all** crewmate +
-impostor rows and surface **Donate** at the top. Live availability comes from `shopItems()`
-(role/alive-aware); the static catalog is:
+### 6.2 Actions (Mission Control, danger-labelled)
+**Target picker**: roster minus you, ejected players disabled. **First option is "— nobody —"**,
+and it's selected by default and after an ejection (the script already resets `R.target`).
 
-| Role | Action (id) | ⚡ | Target? |
+**Full catalog, always shown.** Your role's rows on top, the other role's rows greyed below. Enabled
+or greyed is decided **only** by "is this id in `shopItems()`?". Costs come from `shopItems()` too, so
+no hardcoding.
+
+| Role | Action (id) | ⚡ | Target |
 |---|---|---|---|
-| Crewmate | Private Investigation (`privateInvestigation`) | 7 | ◎ yes |
-| Crewmate | Public Investigation (`publicInvestigation`) | 15 | ◎ yes |
-| Crewmate | Note Look (`noteViewer`) | 7 | ◎ yes |
-| Crewmate | Meeting (`meeting`) | 10 | no |
-| Impostor | Investigation Remover (`investigationRemover`) | 10 | ◎ yes |
-| Impostor | Fake Investigation (`fakeInvestigation`) | 6 | ◎ yes |
-| Impostor | Unclear (`clearListRemover`) | 15 | ◎ yes |
-| Impostor | Disguise (`blendIn`) | 15 | no |
-| Eliminated | Donate (`donate`) | — | ◎ yes (whole balance) |
+| Crewmate | Private Investigation (`privateInvestigation`) | 7 | ◎ |
+| Crewmate | Public Investigation (`publicInvestigation`) | 15 | ◎ |
+| Crewmate | Note Look (`noteViewer`) | 7 | ◎ |
+| Crewmate | Meeting (`meeting`) | 10 | none. **Missing from the shop when the teacher turns student meetings off.** |
+| Impostor | Investigation Remover (`investigationRemover`) | 10 | ◎ |
+| Impostor | Fake Investigation (`fakeInvestigation`) | 6 | ◎ |
+| Impostor | Unclear (`clearListRemover`) | 15 | ◎ |
+| Impostor | Disguise (`blendIn`) | 15 | none |
+| Eliminated | Donate (`donate`) | all your ⚡ | ◎. When eliminated, this is the **only** shop item. |
 
-> **Meeting is crewmate-only** — impostors have no meeting action, so it never enables for them.
+Each enabled row has **Do once** (`R.purchase`) and an **Auto** toggle (`R.on[id]`), plus the ⚡ cost
+and ◎ if it needs a target. Rows you can't afford, or whose pool is at 0, are dimmed but still
+toggleable: arming a row you can't afford yet is fine, and it fires once you can.
 
-Each enabled row: **Do once** button + **Auto** toggle, with ⚡ cost and ◎ when it needs a target.
-Plus one special toggle tied to the same target:
-- **Auto-vote target** — during meetings, repeatedly vote the target off (`IMPOSTER_MODE_VOTE` =
-  target id). Lets you pile all pressure on one player.
+**Why a row is greyed: always say which.** Pick the first reason that applies:
+1. "You're eliminated: only Donate is available"
+2. "Impostor-only" / "Crewmate-only"
+3. **"Your teacher turned off student meetings"** (Meeting, crewmate, alive, `meeting` not in `shopItems()`)
+4. "No meetings left" / "No investigations left"
+5. "Need ⚡N more"
+6. "Pick a target first" (targeted rows while `R.target===''`)
 
-Sources: `purchase(item, on)`, `S.on{}` (armed set), `autoActionTick()`; add a thin vote sender.
+**Auto-vote target** toggle (same target): in `voting`, cast `R.vote(R.target)` **once** at the start of
+voting, and again only if the target changes. Don't spam it.
 
-#### Behaviors / fallbacks (all must be handled)
-- **Target ejected → target auto-resets to "nobody"**; targeted autos pause until a new target is
-  picked (no firing at a dead/empty target).
-- **Warnings, not silent no-ops:** trying a targeted/role-wrong/eliminated-invalid action shows a
-  short warning (e.g. "you're eliminated — only Donate is available", "pick a live target first").
-- **Cheapest-first priority (make it visible):** when several Auto toggles are on, the cheapest
-  affordable one fires first each cycle — so a cheap action will starve pricier ones. Surface the
-  active priority order to the user so this isn't a surprise.
-- **Eliminated → Donate is special:** auto-donate fires on **any** energy gain (donate the whole
-  balance the moment `balance > 0`), not on the normal ~4s throttle.
-- **No-target actions (Meeting, Disguise):** never gated on a target; gate only on their own rules
-  (Meeting: crewmate + `meetingsLeft > 0` + ⚡10; Disguise: impostor + ⚡15) and warn if unmet.
-- Any row you can't afford, or whose limit is 0, is greyed (the server drops it anyway).
-- Energy ⚡ counter shown on this tab next to the actions.
+**Engine changes to make in the script** (logic, small):
+- **Order:** round-robin across armed rows, not cheapest-first. Cheapest-first lets Fake
+  Investigation (⚡6) starve Unclear/Disguise (⚡15) forever. Show "next up: X" under the list.
+- **Eliminated Donate:** fire as soon as `balance() > 0`, outside the 4 s throttle.
+- **Pause during meetings:** don't fire purchases while `phase()` is `discussion`, `voting` or
+  `votingResult`, or after `gameStatus==='results'`.
 
-### 3. Answers  *(danger-labeled — changes your visible score)*
-- **Correct-answer highlight**: on/off → `highlightTick()` (reads `answers[].correct`).
-- **Auto-answer**: on/off, **on-screen toggle only, no keybind** (replaces the current F8 toggle;
-  wire to `S.auto` but drop the F8 listener).
-- **Auto-answer speed**: a speed control so you can see/choose how fast you're answering. Changing
-  speed mid-run must apply cleanly (restart the timer safely) — Claude Design owns that detail.
-- **Your stats**: `correct ✓ · incorrect ✗ · total · accuracy% · streak`. Read from the `questions`
-  MobX store: `questionsAnsweredCorrectly`, `questionsAnsweredIncorrectly` (total = sum, accuracy =
-  correct / total), streak = `balance.streakAmount`. **These persist in the store, so a mid-game
-  inject shows the accumulated totals even for questions you answered before injecting** (verified).
-  Note: this is *your own* answering stat — other players' counts aren't on your client.
+**Respect the teacher's meeting setting.** The server doesn't check it: a `meeting` purchase sent while
+student meetings are off **still starts a meeting and charges ⚡10** (✅ tested). The game only hides the
+button. The hub must **not** offer a way around this. Grey the row with reason #3, and keep the engine
+driven by `shopItems()` (it already is), so Auto never fires a meeting the teacher disabled.
 
-### 4. Log  *(running intel feed)*
-Scrolling feed: investigation results (yours + public), players cleared, notes you peeked,
-ejections, meeting outcomes. Sources (incoming frames already decoded): `SUCCESS_MODAL_INFO`,
-`ACTIVITY_FEED_MESSAGE` / `NOTIFICATION`, roster diffs. Add a small capture buffer when wired.
+### 6.3 Answers (danger-labelled: changes your visible score)
+- **Highlight correct answer**: on/off (default on). Already implemented (`highlightTick`).
+- **Auto-answer**: on/off **on-screen only** (`R.auto`). The F8 key goes away.
+- **Speed**: preset buttons, e.g. Slow ~4 s · Normal ~2 s · Fast ~1 s, **with ±30% random jitter** by
+  default. Perfectly even timing is the most noticeable thing on a teacher's leaderboard. Changing
+  speed mid-run must restart the timer cleanly. Today the script hardcodes ~0.45 s between steps, so
+  parameterize that.
+- **Your stats** card from `stats()`: `✓ correct · ✗ incorrect · total · accuracy% · 🔥 streak`.
+  ✅ Verified 10/0/10/100%/10 after 10 s of auto-answer.
 
-### 5. Settings
-Show/hide key reminder (reuse STAX's), auto-action interval (default ~4s), panel opacity, reset
-position, danger-actions acknowledgement. Mirrors STAX's lightweight settings.
+### 6.4 Log
+Newest-first feed, capped (~100 entries). Each entry gets a time and an icon. Sources are incoming
+frames the script already decodes. Add a small `R.log` ring buffer in `onFrame`:
+- `SUCCESS_MODAL_INFO`: investigation results ("Inconclusive" is common on Normal reliability), and
+  Note Look results (`{title:"X's notes:", description}`).
+- Roster diffs: "Bravo was ejected (impostor)", "Alpha marked clear".
+- Phase changes: "Meeting called", "Voting started", "Game over: Impostors win".
+- Your own actions: "You ran Private Investigation on Bravo (⚡7)". Log it as *sent*, and mark it
+  *confirmed* only when the balance actually drops. Under-funded purchases are silently dropped.
 
-## Thin additions to `tno-reveal.js` when wiring (logic, not UI)
-- Vote sender + **Auto-vote** arming (`IMPOSTER_MODE_VOTE`, target id).
-- Auto-clear `S.target` when the chosen target becomes `votedOff`.
-- Engine: order armed+affordable actions **cheapest-first**; exempt eliminated **Donate** from the
-  throttle (fire whenever `balance > 0`).
-- **Do-once** calls (thin wrappers over `purchase()`), separate from the Auto toggles.
-- Parameterize the auto-answer interval (speed control); drop the F8 keybind.
-- Render the full both-role catalog (static table above) and grey rows not in live `shopItems()`.
-- Stat getters off the `questions` store (`questionsAnsweredCorrectly` / `questionsAnsweredIncorrectly`)
-  + `balance.streakAmount`, with derived total and accuracy.
+### 6.5 Settings
+Show/hide key reminder · auto-action interval (default 4 s) · auto-answer default speed · panel
+opacity · reset position · "I understand others can see these actions" acknowledgement (gates Actions
+and Answers the first time, like STAX).
 
-## Edge cases the hub must handle
-- **Wrong page / not in a TNO game:** show "not in a Trust No One game" instead of an empty panel.
-- **Socket not captured yet (idle inject):** show "connecting…"; it resolves on the next outgoing
-  frame / ping (≤~25s). Don't render stale/empty roster as if final.
-- **Lobby (`intro`):** no roles, no counts, no player count — show "waiting", disable Actions/Answers
-  that need a live game, and reveal them at liftoff (re-request roster on the status change — already wired).
-- **Join-in-late:** roster/roles resolve normally once you're in and assigned.
-- **Duplicate player names:** self (`(you)`) resolves by id from `IMPOSTER_MODE_PERSON`; the name-match
-  fallback only fires when the name is unique — otherwise leave "(you)" unmarked rather than guess.
-- **Host leaves / game ends / "All done":** show "game ended" and freeze actions (socket closes).
-- **Target leaves or is ejected mid-run:** auto-reset target to "nobody"; pause targeted autos + warn.
-- **Reconnect / refresh:** tool re-bootstraps and re-captures the socket; panel state (tab/pos) persists.
-- **Reduced-player games:** impostor count can clamp — always display the real count from the roster,
-  never the configured setting.
-- **Meeting / voting phase:** non-vote actions may be rejected server-side; gate or warn, and this is
-  where Auto-vote applies.
-- **Everything is server-authoritative on energy:** greyed/under-funded actions are also dropped by the
-  server, so the client gate is courtesy — never assume a fired action succeeded; reflect the result
-  from the incoming frame (Log tab).
-- **Game code absent from URL** (opened some other way): fall back to "—".
+---
 
-## What stays as-is
-`tno-reveal.js` is unchanged for now (verified). Gimkit stays a code stash — no install page /
-bookmarklet here until the unified hub. See [`../README.md`](../README.md) for the protocol notes.
+## 7. Edge cases (every row needs handling)
+
+| Situation | What happens | Hub behaviour |
+|---|---|---|
+| Not on a TNO game | no roster, no stores | Show "Not in a Trust No One game" instead of an empty panel |
+| Cold inject on an idle screen | socket captured on next ping (≤25 s) | "Connecting…", don't render an empty roster as final |
+| Lobby (`intro`) | no roles, empty shop, counts unset | "Waiting for liftoff". Actions and Answers disabled |
+| **Teacher turned off student-called meetings** | ✅ `meeting` missing from crewmate `shopItems()`, **but `meetingsLeft()` still says 2** (host can still call meetings) | Grey Meeting with "Your teacher turned off student meetings". **Don't** decide this from `meetingsLeft()`. No bypass (see §6.2) |
+| Host calls a meeting while student meetings are off | ✅ normal `discussion → voting → votingResult`, uses up `meetingsLeft` | Same as any meeting. Auto-vote works (✅) |
+| Target ejected | ✅ script resets `R.target` to `''` | Picker shows "— nobody —", targeted autos pause, toast "Bravo was ejected, pick a new target" |
+| You get ejected | ✅ shop becomes `[donate]` only | Header 👻, all other rows greyed with reason #1, Donate moves to the top |
+| Meeting / voting phase | purchases mid-meeting not useful | Engine paused (§6.2), Auto-vote active |
+| Game over | ✅ `R.gameStatus==='results'`, `phase()` stuck at `votingResult` | "Game over: <winner>", freeze all controls |
+| Host reloads or leaves mid-game | ✅ host link dies ("link invalid"), players stay frozen in `votingResult` | After ~60 s with no phase change during `votingResult`, show "Game may have stalled (host left?)" |
+| "Play Again" in the same tab | script runs once per page (`if (window.__tnoReveal) return`) | Old roster shows until the next phase change. Clear `R.people` / `R.me` / `R.target` when `phase()` goes back to `intro` |
+| Duplicate names | `R.me` resolves by id from the server; name fallback only if unique | Leave "(you)" off rather than guess |
+| Join-in-late | roster resolves once assigned | Normal |
+| Fewer players than impostor setting | impostor count clamps | Always count from the roster, never the setting |
+| Under-funded / invalid purchase | server drops it silently | Never assume success; confirm through balance change (§6.4) |
+| Tied vote | not verified (one attempt ejected someone, but a vote may not have landed) | Don't predict outcomes; just read the roster afterwards |
+
+---
+
+## 8. Delivery: how this gets onto the page
+
+**Gimkit's CSP blocks the STAX-style self-updating loader.** STAX's bookmark pulls the latest code
+from GitHub Pages. Gimkit's `script-src` and `connect-src` only allow Gimkit/Google/Stripe/PostHog
+hosts, so a `<script src=…github.io>` or a fetch-and-eval is refused. Options:
+1. **Full-code bookmarklet** (like STAX's offline build): works everywhere, no auto-update. Needs a
+   build step (minify → `javascript:` URL) like `buildyourstax/build.mjs`.
+2. **Tampermonkey userscript** (`@match *://*.gimkit.com/*`, `@updateURL` → raw GitHub): auto-updates,
+   because extensions aren't bound by page CSP. Same pattern as the JKLM solver. Needs an extension,
+   which school Chromebooks often block.
+
+Recommendation: ship both from one source, the way STAX ships loader + offline. Run the script
+**before liftoff** when possible. It catches the role frame directly, though a mid-game inject also
+works through `requestPeople`.
+
+---
+
+## 9. Open questions (not blocking)
+- Tie-vote outcome.
+- Full list of `SUCCESS_MODAL_INFO` shapes (only investigation and Note Look seen).
+- Whether `ACTIVITY_FEED_MESSAGE` / `NOTIFICATION` appear in TNO (not seen in 3 games).
+
+## 10. Reference
+- Logic: [`tno-reveal.js`](tno-reveal.js) (`window.__tnoReveal`, §3)
+- Protocol notes: [`../README.md`](../README.md)
+- Look: [`design/stax-hub-reference.png`](design/stax-hub-reference.png), [`../../buildyourstax/stax-hub.js`](../../buildyourstax/stax-hub.js)
+- Current debug panel in a live game: [`design/tno-in-game-current-tool.png`](design/tno-in-game-current-tool.png)

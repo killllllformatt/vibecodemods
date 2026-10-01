@@ -17,10 +17,13 @@
 // Mode = classic (Blueboat), NOT Colyseus/Phaser: wss://<x>.gimkitconnect.com/blueboat (socket.io v2),
 // binary frames = 0x04 + msgpack {type:2, data:[event, payload], nsp:"/"}.
 // Insert = hide/show panel.  F8 = auto-answer.
+//
+// For UI code: window.__tnoReveal exposes state (people, me, target, on, auto, gameStatus), actions
+// (purchase, vote, requestPeople) and read getters under .api — see HUB-BLUEPRINT.md §3.
 (() => {
   if (window.__tnoReveal) return;
   const S = (window.__tnoReveal = {
-    people: [], me: null, status: '', ws: null, room: null, auto: false,
+    people: [], me: null, status: '', gameStatus: '', ws: null, room: null, auto: false,
     // Mission Control automation state:
     target: '',          // selected target player id
     on: {},              // { <shopItemId>: true } = that auto-action is armed
@@ -123,6 +126,8 @@
   // Every Mission Control action (investigate, note look, meeting, impostor sabotage, donate) is
   // this one frame. `on` is the target id for targeted actions, omitted for the rest.
   const purchase = (item, on) => sendToRoom('IMPOSTER_MODE_PURCHASE', on === undefined ? { item } : { item, on });
+  // Meeting vote: data is the bare target id (only valid while status === 'voting').
+  const vote = (id) => sendToRoom('IMPOSTER_MODE_VOTE', id);
 
   // Engine.io v3 binary frame: 0x04 + socket.io-msgpack packet {type, data:[event, payload], nsp}
   function onFrame(ws, ab) {
@@ -141,10 +146,14 @@
     if (!msg || !msg.key) return;
     if (msg.key === 'IMPOSTER_MODE_PEOPLE' && Array.isArray(msg.data)) {
       S.people = msg.data;
+      // An ejected target can't be acted on — drop it so targeted autos pause until a new pick.
+      const t = S.people.find((p) => p.id === S.target);
+      if (S.target && (!t || t.votedOff)) S.target = '';
       resolveSelf();
       render();
     } else if (msg.key === 'STATE_UPDATE' && msg.data) {
       if (msg.data.type === 'IMPOSTER_MODE_PERSON') { S.me = msg.data.value; render(); }
+      else if (msg.data.type === 'GAME_STATUS') { S.gameStatus = msg.data.value; render(); } // 'gameplay' → 'results' = game over
       else if (msg.data.type === 'IMPOSTER_MODE_STATUS' && msg.data.value !== S.status) {
         S.status = msg.data.value;
         // ejections aren't pushed — re-ask on every phase change (and once more after results settle)
@@ -419,7 +428,7 @@
     const picker = items.every((it) => NO_TARGET.has(it.id)) ? '' :
       `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">` +
       `<span style="opacity:.6;font-size:11px">Target</span>` +
-      `<select id="tnoTarget" style="pointer-events:auto;flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:5px;font:11px system-ui;padding:2px">${opts || '<option>—</option>'}</select>` +
+      `<select id="tnoTarget" style="pointer-events:auto;flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:5px;font:11px system-ui;padding:2px"><option value="" ${S.target ? '' : 'selected'}>— nobody —</option>${opts}</select>` +
       `</div>`;
     return `<div style="margin-top:7px;border-top:1px solid #30363d;padding-top:6px">` +
       `<div style="opacity:.55;font-size:10.5px;margin-bottom:4px">Auto Mission Control (◎ = needs target)</div>` +
@@ -458,4 +467,19 @@
   });
   S.requestPeople = requestPeople;
   S.purchase = purchase;
+  S.vote = vote;
+  // Read API for UI code (the hub): everything a panel needs without reaching into this closure.
+  const stats = () => {
+    const s = stores(); if (!s || !s.questions) return null;
+    const c = deref(s.questions.questionsAnsweredCorrectly) || 0, w = deref(s.questions.questionsAnsweredIncorrectly) || 0;
+    return { correct: c, incorrect: w, total: c + w, accuracy: c + w ? c / (c + w) : 0, streak: deref(s.balance.streakAmount) || 0 };
+  };
+  S.api = {
+    balance: balanceVal, investigationsLeft: invLeft, meetingsLeft: meetLeft, role: myRole,
+    eliminated: amEliminated, shopItems, stats, currentQuestion,
+    impostorsLeft: () => S.people.filter((p) => p.role === 'imposter' && !p.votedOff).length,
+    phase: () => { const s = stores(); return (s && deref(s.imposter.status)) || S.status; },
+    gameCode: () => new URLSearchParams(location.search).get('gc'),
+    connected: () => !!(S.ws && S.ws.readyState === 1 && S.room),
+  };
 })();

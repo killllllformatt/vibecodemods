@@ -57,6 +57,18 @@ tab/feature spec for Claude Design to build its section of the unified hub (STAX
     (donating at ⚡0 transfers 0 — no infinite). So automation just gates on `balance >= cost` and
     fires the frame; the server is the backstop.
 
+  _Lifecycle + server gaps (live-verified 2026-10-01):_
+  - Phases (`imposter.status` / `IMPOSTER_MODE_STATUS`): `intro` → `questions` → `discussion` → `voting`
+    → `votingResult` → back to `questions`. **Game over is a separate frame:** `GAME_STATUS: "results"`
+    (the phase stays on `votingResult`). Impostors start at ⚡10, crewmates at ⚡0.
+  - **Student-Called Meetings OFF only hides the button.** `meeting` drops out of the crewmate shop list,
+    but an `IMPOSTER_MODE_PURCHASE {item:"meeting"}` frame still starts a meeting and charges ⚡10. The
+    hub deliberately respects the teacher's setting (no bypass). `meetingsLeft` still counts while
+    it's off, because host-called meetings use the same pool.
+  - Game code isn't in player state when joined by typing the code (only in `?gc=` link joins).
+  - **Delivery:** gimkit.com CSP (`script-src`/`connect-src`) excludes github.io, so the STAX
+    self-updating Pages loader can't work here. Use a full-code bookmarklet or a Tampermonkey userscript.
+
 **Snowy Survival = Creative mode = Colyseus + Phaser (different stack entirely).**
 - Acquire the running scene by wrapping `Phaser.Scenes.Systems.prototype.step` (fires each frame
   with `this`=a scene's Systems); the scene with `.characterManager` is the game scene. Restore after.
