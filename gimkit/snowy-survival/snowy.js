@@ -10,6 +10,9 @@
 //   Auto-answer: sends MESSAGE_FOR_DEVICE {key:'answered', deviceId, data:{answer}} straight to the
 //   server — no question screen needed. Each question is answered ONCE: the server counts an answer
 //   to a question you've already moved past as WRONG, so we never resend until it advances.
+// - Minimap: the whole map in a corner (terrain + walls) with every player as a dot: you, cursed and
+//   humans in different colours, plus your camera view. M = big map. Styled by __snowy.minimap.theme;
+//   raw data for a custom UI = __snowy.api.minimap().
 // - Fun (client-side only — nobody else sees it): spinbot, Shrek skin (you or everyone), or any
 //   image you pick as your skin.
 // Insert = hide/show panel. Click the bookmarklet again to remove everything.
@@ -61,7 +64,7 @@
   const isSnowy = () => { try { return /\/modes\/snowInfection\//.test(JSON.parse(room().state.mapSettings).musicUrl || ''); } catch { return false; } };
 
   // ---- config + colors ----
-  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, hidden: false };
+  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, mapBig: false, hidden: false };
   const COL = { zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#666' };
 
   // team "2" = cursed, "1" = human in snowInfection. Lobby / other modes / unassigned → neutral.
@@ -243,6 +246,223 @@
     inp.click();
   };
 
+  // ---- minimap ----
+  // Whole map in a corner, everyone as a dot. Two halves:
+  //   1. DATA (minimapData): map frame, terrain, walls, players, your camera view — all in world px.
+  //      Exposed as __snowy.api.minimap() so a custom UI can draw it any way it likes.
+  //   2. DRAW (mmDraw): a canvas renderer styled entirely by __snowy.minimap.theme.
+  // Map frame = the camera's scroll limits, i.e. exactly the area the game lets you see in this phase
+  // (lobby and game have different frames). The world itself is a 250×250 grid of 64px tiles, most of
+  // it empty or holding off-map logic devices, so the raw world size would make the map tiny.
+  const TILE = 64;
+  const mmTheme = {
+    size: 190,               // longest side of the small map, CSS px
+    bigSize: 560,            // longest side when expanded (M)
+    corner: 'bottom-right',  // bottom-right | bottom-left | top-right | top-left  (top-right = Gimkit's buttons + energy)
+    margin: 12,
+    radius: 10,
+    frame: 'rgba(18,20,26,.88)', frameBorder: '#c353ff', framePad: 6,
+    opacity: 1,
+    background: '#e9f1f6',   // the snow under everything (map's backgroundTerrain is "Snow")
+    terrain: { 'Snowy Grass': '#c9dccb', 'Light Scraps': '#c4c6c9', 'Dark Scraps': '#55575b', 'Sand': '#efd39b',
+      'Dry Grass': '#e6a65a', 'Dirt': '#a77b52', 'Water': '#5fb0ea', 'Frozen Lake': '#a9d8f3' },
+    terrainFallback: '#d4d8dc',
+    wall: '#4b5360', wallAlpha: 0.9,
+    view: 'rgba(255,255,255,.9)', viewWidth: 1, showView: true,
+    dot: { me: '#4db6ff', zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#777' },
+    dotRadius: 3.5, meRadius: 5, dotOutline: 'rgba(0,0,0,.75)', meRing: '#ffffff',
+    immuneRing: '#ffffff',   // spawn-immune players get a thin ring
+    labels: false,           // names next to dots (always on in the big map)
+    labelFont: '600 10px system-ui,sans-serif', labelColor: '#10131a', labelHalo: 'rgba(255,255,255,.85)',
+  };
+
+  const mm = { layer: null, layerKey: '', walls: [], terrain: [], extent: null, sigAt: 0, sig: '' };
+  const mapExtent = () => {
+    try { const c = scene.cameras.main, b = c.getBounds(); if (c.useBounds && b && b.width > 0 && b.height > 0) return { x: b.x, y: b.y, w: b.width, h: b.height }; } catch {}
+    return mm.extent;  // no bounds right now (e.g. a cutscene): keep the last frame
+  };
+  const inExtent = (e, x, y, pad = 0) => x >= e.x - pad && x <= e.x + e.w + pad && y >= e.y - pad && y <= e.y + e.h + pad;
+
+  // Terrain: one entry per tile in the frame. Higher depth draws on top. `solid` = can't walk on it.
+  const readTerrain = e => {
+    const out = [];
+    try {
+      store.world.terrain.tiles.forEach(t => {
+        const x = t.x * TILE, y = t.y * TILE;
+        if (x + TILE < e.x || y + TILE < e.y || x > e.x + e.w || y > e.y + e.h) return;
+        out.push({ x, y, w: TILE, h: TILE, terrain: t.terrain, solid: !!t.collides, depth: t.depth || 0 });
+      });
+    } catch {}
+    return out.sort((a, b) => a.depth - b.depth);
+  };
+
+  // Walls: the top-down colliders of every visible prop with collisions on, placed exactly like the game
+  // does (checked against live physics bodies): collider offsets are relative to the IMAGE CENTRE,
+  // in source-image px, times the prop's scale. Capsule "halfHeight" in the prop data is the full
+  // straight length, so it's halved here.
+  const propVisible = d => { const v = d.state && deref(d.state.visible); return v == null ? d.options.visibleOnGameStart !== false : !!v; };
+  const readWalls = e => {
+    const out = [];
+    let devs = []; try { devs = scene.worldManager.devices.allDevices || []; } catch {}
+    for (const d of devs) {
+      try {
+        if (!d || !d.options || !d.propOption || d.options.UseColliders === false || !propVisible(d)) continue;
+        const po = d.propOption, def = po.colliders && po.colliders.topDown; if (!def) continue;
+        const s = (po.scale || 1) * (d.options.Scale || 1), flip = d.options.FlipX ? -1 : 1;
+        const ang = (d.options.Angle || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+        const img = po.image || {};
+        const cx0 = (0.5 - (po.originX ?? 0.5)) * (img.width || 0) * s, cy0 = (0.5 - (po.originY ?? 0.5)) * (img.height || 0) * s;
+        const place = (ox, oy) => { const lx = (cx0 + ox * s) * flip, ly = cy0 + oy * s; return { x: d.x + lx * ca - ly * sa, y: d.y + lx * sa + ly * ca }; };
+        if (!inExtent(e, d.x, d.y, 600)) continue;
+        for (const r of def.rectangle || []) {
+          const c = place(r.x, r.y), a = ang + flip * (r.angle || 0) * Math.PI / 180;
+          const hw = r.width * s / 2, hh = r.height * s / 2, c2 = Math.cos(a), s2 = Math.sin(a);
+          out.push({ type: 'rect', propId: d.options.propId, x: c.x, y: c.y, w: hw * 2, h: hh * 2, angle: a,
+            points: [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([px, py]) => [c.x + px * c2 - py * s2, c.y + px * s2 + py * c2]) });
+        }
+        for (const r of def.circle || []) { const c = place(r.x, r.y); out.push({ type: 'circle', propId: d.options.propId, x: c.x, y: c.y, r: r.radius * s }); }
+        for (const r of def.capsule || []) {
+          const c = place(r.x, r.y), a = ang + flip * (r.angle || 0) * Math.PI / 180, half = (r.halfHeight || 0) * s / 2;
+          // segment runs along the capsule's local Y axis (angle 90 = lying flat)
+          const dx = -Math.sin(a) * half, dy = Math.cos(a) * half;
+          out.push({ type: 'capsule', propId: d.options.propId, x: c.x, y: c.y, r: r.radius * s, angle: a, a: [c.x - dx, c.y - dy], b: [c.x + dx, c.y + dy] });
+        }
+      } catch {}
+    }
+    return out;
+  };
+
+  // Rebuild the static layer only when something that shapes it changes: frame, terrain edits, or a
+  // prop appearing/disappearing (barriers that open mid-game). Checked every 2s; cheap otherwise.
+  const staticSig = e => {
+    let vis = 0; try { for (const d of scene.worldManager.devices.allDevices) if (d.propOption && propVisible(d)) vis++; } catch {}
+    let tid = ''; try { tid = deref(store.world.terrain.currentTerrainUpdateId); } catch {}
+    return [e.x, e.y, e.w, e.h].map(Math.round).join(',') + '|' + tid + '|' + store.world.terrain.tiles.size + '|' + vis;
+  };
+  const refreshStatic = () => {
+    const e = mapExtent(); if (!e || !store) return false;
+    if (Date.now() - mm.sigAt < 2000 && mm.extent) return true;
+    mm.sigAt = Date.now();
+    const sig = staticSig(e);
+    if (sig === mm.sig) return true;
+    mm.sig = sig; mm.extent = e; mm.terrain = readTerrain(e); mm.walls = readWalls(e); mm.layer = null;
+    return true;
+  };
+
+  const mmKind = (id, info) => {
+    if (id === myId()) return 'me';
+    if (info && info.alive === false) return 'dead';
+    return teamKind(info && info.team);
+  };
+  // Live dots. Smoothed position from the scene when the character exists there, else the server's.
+  const readPlayers = () => {
+    const out = [], seen = new Set();
+    let chars = []; try { chars = [...scene.characterManager.characters.values()]; } catch {}
+    for (const ch of chars) {
+      try {
+        if (ch.type && ch.type !== 'player') continue;
+        const info = authInfo(ch.id) || {};
+        out.push({ id: ch.id, name: info.name || '?', x: ch.body.x, y: ch.body.y, kind: mmKind(ch.id, info), team: info.team,
+          hp: info.hp, shield: info.shield, immune: !!info.immune, alive: info.alive !== false, self: ch.id === myId() });
+        seen.add(ch.id);
+      } catch {}
+    }
+    try {
+      room().state.characters.forEach((c, id) => {
+        if (seen.has(id) || c.type === 'sentry') return;
+        const info = authInfo(id) || {};
+        out.push({ id, name: info.name || '?', x: c.x, y: c.y, kind: mmKind(id, info), team: info.team,
+          hp: info.hp, shield: info.shield, immune: !!info.immune, alive: info.alive !== false, self: id === myId() });
+      });
+    } catch {}
+    return out.filter(p => isFinite(p.x) && isFinite(p.y));
+  };
+
+  // Everything a custom minimap UI needs, in world px. Static parts are cached; safe to call per frame.
+  const minimapData = () => {
+    if (!scene || !store || !refreshStatic()) return null;
+    let view = null; try { const wv = scene.cameras.main.worldView; view = { x: wv.x, y: wv.y, w: wv.width, h: wv.height }; } catch {}
+    const players = readPlayers();
+    const counts = { zombie: 0, human: 0, neutral: 0, dead: 0 };
+    for (const p of players) { const k = p.self ? mmKind('', { team: p.team, alive: p.alive }) : p.kind; if (k in counts) counts[k]++; }
+    return { phase: phase(), snowy: isSnowy(), extent: mm.extent, background: mmTheme.background, terrain: mm.terrain, walls: mm.walls,
+      players, me: players.find(p => p.self) || null, view, counts };
+  };
+
+  // ---- default renderer ----
+  const mmCanvas = document.createElement('canvas');
+  Object.assign(mmCanvas.style, { position: 'fixed', zIndex: 2147483645, pointerEvents: 'none', display: 'none' });
+  document.body.appendChild(mmCanvas);
+  cleanups.push(() => mmCanvas.remove());
+  const mctx = mmCanvas.getContext('2d');
+  const terrainColor = name => mmTheme.terrain[name] || mmTheme.terrainFallback;
+
+  // Static layer = background + terrain + walls, drawn once at the big size and scaled down.
+  const buildLayer = (e, px) => {
+    const k = px / Math.max(e.w, e.h);
+    const c = document.createElement('canvas'); c.width = Math.ceil(e.w * k); c.height = Math.ceil(e.h * k);
+    const g = c.getContext('2d');
+    g.fillStyle = mmTheme.background; g.fillRect(0, 0, c.width, c.height);
+    for (const t of mm.terrain) { g.fillStyle = terrainColor(t.terrain); g.fillRect(Math.floor((t.x - e.x) * k), Math.floor((t.y - e.y) * k), Math.ceil(t.w * k) + 1, Math.ceil(t.h * k) + 1); }
+    g.globalAlpha = mmTheme.wallAlpha; g.fillStyle = mmTheme.wall; g.strokeStyle = mmTheme.wall; g.lineCap = 'round';
+    for (const w of mm.walls) {
+      if (w.type === 'rect') { g.beginPath(); w.points.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo']((x - e.x) * k, (y - e.y) * k)); g.closePath(); g.fill(); }
+      else if (w.type === 'circle') { g.beginPath(); g.arc((w.x - e.x) * k, (w.y - e.y) * k, Math.max(1, w.r * k), 0, Math.PI * 2); g.fill(); }
+      else { g.lineWidth = Math.max(1.5, w.r * 2 * k); g.beginPath(); g.moveTo((w.a[0] - e.x) * k, (w.a[1] - e.y) * k); g.lineTo((w.b[0] - e.x) * k, (w.b[1] - e.y) * k); g.stroke(); }
+    }
+    g.globalAlpha = 1;
+    return c;
+  };
+
+  const mmDraw = () => {
+    const T = mmTheme;
+    if (!cfg.minimap || cfg.hidden) { mmCanvas.style.display = 'none'; return; }
+    const data = minimapData();
+    if (!data) { mmCanvas.style.display = 'none'; return; }
+    const e = data.extent, big = cfg.mapBig;
+    const side = big ? T.bigSize : T.size;
+    const k = side / Math.max(e.w, e.h), mw = e.w * k, mh = e.h * k, pad = T.framePad;
+    const cw = mw + pad * 2, ch = mh + pad * 2, dpr = devicePixelRatio || 1;
+    if (mmCanvas.width !== Math.round(cw * dpr) || mmCanvas.height !== Math.round(ch * dpr)) {
+      mmCanvas.width = Math.round(cw * dpr); mmCanvas.height = Math.round(ch * dpr);
+      mmCanvas.style.width = cw + 'px'; mmCanvas.style.height = ch + 'px';
+    }
+    const corner = big ? 'center' : T.corner;
+    Object.assign(mmCanvas.style, { display: 'block', opacity: T.opacity, top: '', bottom: '', left: '', right: '', transform: '' });
+    if (corner === 'center') Object.assign(mmCanvas.style, { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' });
+    else { const [v, h] = corner.split('-'); mmCanvas.style[v] = T.margin + 'px'; mmCanvas.style[h] = T.margin + 'px'; }
+
+    const layerKey = mm.sig + '|' + JSON.stringify([T.background, T.terrain, T.terrainFallback, T.wall, T.wallAlpha, T.bigSize]);
+    if (!mm.layer || mm.layerKey !== layerKey) { mm.layer = buildLayer(e, Math.max(T.bigSize, T.size) * dpr); mm.layerKey = layerKey; }
+
+    const g = mctx; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, cw, ch);
+    const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+    rr(0.5, 0.5, cw - 1, ch - 1, T.radius); g.fillStyle = T.frame; g.fill(); g.lineWidth = 1; g.strokeStyle = T.frameBorder; g.stroke();
+    g.save(); rr(pad, pad, mw, mh, Math.max(0, T.radius - pad / 2)); g.clip();
+    g.drawImage(mm.layer, pad, pad, mw, mh);
+    const toMap = (x, y) => [pad + (x - e.x) * k, pad + (y - e.y) * k];
+    if (T.showView && data.view) { const [vx, vy] = toMap(data.view.x, data.view.y); g.lineWidth = T.viewWidth; g.strokeStyle = T.view; g.strokeRect(vx, vy, data.view.w * k, data.view.h * k); }
+    // others first, you on top; cursed above humans so a chaser is never hidden under a crowd
+    const order = { dead: 0, neutral: 1, human: 2, zombie: 3, me: 4 };
+    const dots = data.players.slice().sort((a, b) => order[a.kind] - order[b.kind]);
+    const showLabels = big || T.labels;
+    for (const p of dots) {
+      const [x, y] = toMap(p.x, p.y), r = p.self ? T.meRadius : T.dotRadius;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = T.dot[p.kind] || T.dot.neutral; g.fill();
+      g.lineWidth = p.self ? 2 : 1; g.strokeStyle = p.self ? T.meRing : T.dotOutline; g.stroke();
+      if (p.immune && !p.self) { g.beginPath(); g.arc(x, y, r + 2.5, 0, Math.PI * 2); g.lineWidth = 1; g.strokeStyle = T.immuneRing; g.stroke(); }
+      if (showLabels) {
+        g.font = T.labelFont; g.textAlign = 'left'; g.textBaseline = 'middle';
+        g.lineWidth = 3; g.strokeStyle = T.labelHalo; g.strokeText(p.name, x + r + 3, y); g.fillStyle = T.labelColor; g.fillText(p.name, x + r + 3, y);
+      }
+    }
+    g.restore();
+  };
+  let mmT = 0;
+  const mmLoop = () => { try { mmDraw(); } catch {} mmT = requestAnimationFrame(mmLoop); };
+  mmT = requestAnimationFrame(mmLoop);
+  cleanups.push(() => cancelAnimationFrame(mmT));
+
   // ---- questions ----
   // Question devices: gimkitLiveQuestion. The main one gives the per-role reward (+energy as a human,
   // +snowballs once cursed) and has no fixed "correct" text; side ones (e.g. "+1 Bait") do.
@@ -368,18 +588,20 @@
     border: '1px solid #c353ff', userSelect: 'none' });
   const head = document.createElement('div'); head.innerHTML = '<b style="color:#c353ff">Snowy</b> <span style="opacity:.55">Insert=hide</span>'; panel.appendChild(head);
   const note = document.createElement('div'); note.style.cssText = 'color:#f4c430;margin-top:3px;display:none'; panel.appendChild(note);
+  const boxes = {};
   const group = (title, items) => {
     const t = document.createElement('div'); t.textContent = title; t.style.cssText = 'opacity:.55;font-size:10.5px;margin-top:6px'; panel.appendChild(t);
     const box = document.createElement('div'); box.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px 10px;margin:2px 0'; panel.appendChild(box);
     for (const [label, key] of items) {
       const l = document.createElement('label'); l.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer';
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = cfg[key]; cb.style.accentColor = '#c353ff';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = cfg[key]; cb.style.accentColor = '#c353ff'; boxes[key] = cb;
       cb.onchange = () => { cfg[key] = cb.checked; if (key === 'highlight' && !cb.checked) unmark(); };
       l.appendChild(cb); l.appendChild(Object.assign(document.createElement('span'), { textContent: label })); box.appendChild(l);
     }
   };
   group('ESP', [['🧟 Cursed', 'cursed'], ['🏃 Humans', 'humans']]);
   group('Draw', [['Boxes', 'boxes'], ['Tracers', 'tracers'], ['Names', 'names'], ['Health', 'health'], ['List', 'list']]);
+  group('Map', [['🗺 Minimap', 'minimap'], ['Big map (M)', 'mapBig']]);
   group('Answers', [['Highlight', 'highlight'], ['Auto-answer', 'autoAnswer']]);
   group('Fun (only you see it)', [['🌀 Spin', 'spin'], ['🟢 Shrek', 'shrek'], ['Everyone is Shrek', 'shrekAll']]);
   const funRow = document.createElement('div'); funRow.style.cssText = 'display:flex;gap:6px;margin:2px 0 4px';
@@ -426,13 +648,18 @@
   };
   refresh(); const rt = setInterval(refresh, 400); cleanups.push(() => clearInterval(rt));
 
-  const onKey = e => { if (e.key === 'Insert') { cfg.hidden = !cfg.hidden; panel.style.opacity = cfg.hidden ? .4 : 1; } };
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
+  const onKey = e => {
+    if (e.key === 'Insert') { cfg.hidden = !cfg.hidden; panel.style.opacity = cfg.hidden ? .4 : 1; }
+    else if ((e.key === 'm' || e.key === 'M') && !typing(e) && cfg.minimap) { cfg.mapBig = !cfg.mapBig; boxes.mapBig.checked = cfg.mapBig; }
+  };
   addEventListener('keydown', onKey); cleanups.push(() => removeEventListener('keydown', onKey));
 
   window.__snowy = {
     cfg, ans,
+    minimap: { theme: mmTheme, data: () => minimapData() },
     get scene() { return scene; }, get store() { return store; },
-    api: { phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures },
+    api: { phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures, minimap: () => minimapData() },
     destroy() { cleanups.forEach(f => { try { f(); } catch {} }); canvas.remove(); panel.remove(); delete window.__snowy; },
   };
 })();
