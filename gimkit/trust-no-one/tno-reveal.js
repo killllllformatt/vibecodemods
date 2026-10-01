@@ -18,17 +18,32 @@
 // binary frames = 0x04 + msgpack {type:2, data:[event, payload], nsp:"/"}.
 // Insert = hide/show panel.  F8 = auto-answer.
 //
-// For UI code: window.__tnoReveal exposes state (people, me, target, on, auto, gameStatus), actions
-// (purchase, vote, requestPeople) and read getters under .api — see HUB-BLUEPRINT.md §3.
+// For UI code: window.__tnoReveal exposes state, actions and read getters under .api —
+// the full contract is in DESIGN-BRIEF.md ("Data the UI can show").
 (() => {
-  if (window.__tnoReveal) return;
+  // Bookmarklet clicked again → toggle the panel instead of loading a second copy.
+  if (window.__tnoReveal) { if (window.__tnoReveal.toggle) window.__tnoReveal.toggle(); return; }
   const S = (window.__tnoReveal = {
     people: [], me: null, status: '', gameStatus: '', ws: null, room: null, auto: false,
     // Mission Control automation state:
     target: '',          // selected target player id
     on: {},              // { <shopItemId>: true } = that auto-action is armed
     lastAction: 0,       // throttle stamp
+    actionEveryMs: 4000, // auto-action throttle
+    rr: 0,               // round-robin cursor over armed actions
+    autoVote: false,     // vote the target once per voting phase
+    votedFor: '',        // who we already auto-voted this phase
+    answerMs: 2000,      // auto-answer base delay per question
+    jitter: 0.3,         // ±30% random spread on that delay
+    log: [],             // newest-first intel feed: {t, kind, text}
+    mode: 'unknown',     // 'tno' | 'other' | 'unknown'
+    sawTno: false,       // any IMPOSTER_MODE_* traffic seen
+    phaseSince: Date.now(),
+    sendHooked: false,   // whether our outgoing-socket hook took (another script can lock it)
   });
+  const LOG_MAX = 100;
+  const addLog = (kind, text) => { S.log.unshift({ t: Date.now(), kind, text }); if (S.log.length > LOG_MAX) S.log.length = LOG_MAX; };
+  const nameOf = (id) => (S.people.find((p) => p.id === id) || {}).name || 'someone';
 
   // --- minimal msgpack ---
   const td = new TextDecoder();
@@ -125,9 +140,14 @@
   const requestPeople = () => sendToRoom('IMPOSTER_MODE_REQUEST_PEOPLE', undefined);
   // Every Mission Control action (investigate, note look, meeting, impostor sabotage, donate) is
   // this one frame. `on` is the target id for targeted actions, omitted for the rest.
-  const purchase = (item, on) => sendToRoom('IMPOSTER_MODE_PURCHASE', on === undefined ? { item } : { item, on });
-  // Meeting vote: data is the bare target id (only valid while status === 'voting').
-  const vote = (id) => sendToRoom('IMPOSTER_MODE_VOTE', id);
+  const purchase = (item, on) => {
+    const ok = sendToRoom('IMPOSTER_MODE_PURCHASE', on === undefined ? { item } : { item, on });
+    const it = shopItems().find((x) => x.id === item);
+    if (ok) addLog('sent', `You sent ${it ? it.name : item}${on ? ' on ' + nameOf(on) : ''}`);
+    return ok;
+  };
+  // Meeting vote: data is the bare target id (only valid while status === 'voting'). Re-sending changes the vote.
+  const vote = (id) => { const ok = sendToRoom('IMPOSTER_MODE_VOTE', id); if (ok) addLog('vote', `You voted for ${nameOf(id)}`); return ok; };
 
   // Engine.io v3 binary frame: 0x04 + socket.io-msgpack packet {type, data:[event, payload], nsp}
   function onFrame(ws, ab) {
@@ -144,18 +164,39 @@
       if (firstSighting && !S.people.length) setTimeout(requestPeople, 200);
     }
     if (!msg || !msg.key) return;
+    // TNO signal. Other classic modes still answer a roster request — with an EMPTY list — so an
+    // empty IMPOSTER_MODE_PEOPLE doesn't count.
+    const tnoKey = /^IMPOSTER_MODE_/.test(msg.key) && !(msg.key === 'IMPOSTER_MODE_PEOPLE' && !(Array.isArray(msg.data) && msg.data.length));
+    if (tnoKey || (msg.data && /^IMPOSTER_MODE_/.test(msg.data.type || ''))) { S.sawTno = true; S.mode = 'tno'; }
+    // Action results arrive as toasts, e.g. {message:'Fake investigation ran on Delta!', type:'success'}.
+    if (msg.key === 'TOAST' && msg.data && msg.data.message) addLog(msg.data.type === 'success' ? 'result' : 'warn', msg.data.message);
+    if (msg.key === 'SUCCESS_MODAL_INFO' && msg.data) addLog('result', [msg.data.title, msg.data.description].filter(Boolean).join(' '));
     if (msg.key === 'IMPOSTER_MODE_PEOPLE' && Array.isArray(msg.data)) {
+      // Roster diffs → log (ejections aren't pushed any other way).
+      for (const p of msg.data) {
+        const old = S.people.find((o) => o.id === p.id);
+        if (!old) continue;
+        if (p.votedOff && !old.votedOff) addLog('eject', `${p.name} was ejected (${p.role === 'imposter' ? 'impostor' : 'crewmate'})`);
+        if (p.markedAsClear && !old.markedAsClear) addLog('clear', `${p.name} was marked clear`);
+      }
       S.people = msg.data;
       // An ejected target can't be acted on — drop it so targeted autos pause until a new pick.
       const t = S.people.find((p) => p.id === S.target);
-      if (S.target && (!t || t.votedOff)) S.target = '';
+      if (S.target && (!t || t.votedOff)) { addLog('target', `Target ${t ? t.name : ''} is gone. Pick a new one`); S.target = ''; }
       resolveSelf();
       render();
     } else if (msg.key === 'STATE_UPDATE' && msg.data) {
       if (msg.data.type === 'IMPOSTER_MODE_PERSON') { S.me = msg.data.value; render(); }
-      else if (msg.data.type === 'GAME_STATUS') { S.gameStatus = msg.data.value; render(); } // 'gameplay' → 'results' = game over
+      else if (msg.data.type === 'GAME_STATUS') { // 'gameplay' → 'results' = game over (phase stays on its last value)
+        S.gameStatus = msg.data.value;
+        if (S.gameStatus === 'results') addLog('phase', 'Game over: ' + winner());
+        render();
+      }
       else if (msg.data.type === 'IMPOSTER_MODE_STATUS' && msg.data.value !== S.status) {
         S.status = msg.data.value;
+        S.phaseSince = Date.now();
+        const label = { questions: 'Back to questions', discussion: 'Meeting called', voting: 'Voting started', votingResult: 'Voting finished' }[S.status];
+        if (label) addLog('phase', label);
         // ejections aren't pushed — re-ask on every phase change (and once more after results settle)
         setTimeout(requestPeople, 300);
         setTimeout(requestPeople, 3000);
@@ -185,11 +226,16 @@
   // Mid-game inject: incoming binary traffic can be quiet for a while (idle "Continue" screens),
   // so also learn the socket from the next outgoing frame (engine.io pings every ~25s) and the
   // room id from React props — then we can act without waiting for inbound traffic.
+  // Another userscript (e.g. Greasyfork "gimkit cheats (MOD MENU)") can lock WebSocket.prototype.send
+  // with a setter that ignores us. Then we run incoming-only: the MessageEvent hook still finds the
+  // socket on the next server frame, and sending still works because ws.send stays native.
   const origSend = WebSocket.prototype.send;
-  WebSocket.prototype.send = function () {
+  const ourSend = function () {
     if (!S.ws && /gimkitconnect/.test(this.url)) { S.ws = this; bootstrap(); }
     return origSend.apply(this, arguments);
   };
+  try { WebSocket.prototype.send = ourSend; } catch (e) {}
+  S.sendHooked = WebSocket.prototype.send === ourSend;
 
   // --- React helpers ---
   function fiberOf(el) { const k = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); return k && el[k]; }
@@ -267,9 +313,23 @@
 
   function bootstrap() {
     if (!S.room) S.room = roomFromReact();
-    if (S.ws && S.room && !S.people.length) requestPeople();
+    if (S.ws && S.room && !S.people.length && S.mode !== 'other') requestPeople();
     render();
   }
+  // TNO vs any other classic mode: TNO always has IMPOSTER_MODE_* traffic or a non-empty shop once
+  // the game is running. If the game is live and neither shows up for a few seconds, it's another
+  // mode — stop asking the server for a roster that will never come.
+  let liveSince = 0;
+  function detectMode() {
+    if (S.mode === 'tno') return;
+    if (S.sawTno || shopItems().length) { S.mode = 'tno'; return; }
+    const s = stores();
+    const live = S.gameStatus === 'gameplay' || (s && s.gameValues && deref(s.gameValues.gameStatus) === 'gameplay');
+    if (!live || !S.ws) { liveSince = 0; return; }
+    if (!liveSince) liveSince = Date.now();
+    if (Date.now() - liveSince > 8000) S.mode = 'other';
+  }
+  function winner() { return S.people.some((p) => p.role === 'imposter' && !p.votedOff) ? 'Impostors win' : 'Crewmates win'; }
 
   // --- answers ---
   function currentQuestion() {
@@ -319,48 +379,88 @@
     marked = box || null;
     if (marked) { marked.style.outline = '4px solid #56d364'; marked.style.outlineOffset = '-6px'; }
   }
-  let busy = false;
-  async function autoTick() {
-    if (!S.auto || busy) return;
-    busy = true;
-    try {
-      const cont = leaf('Continue');
-      if (cont) { reactClick(cont); return; }
-      const q = currentQuestion();
-      const c = q && q.answers.find((a) => a.correct);
-      const span = c && answerSpan(c.text);
-      if (span) reactClick(span);
-    } finally {
-      setTimeout(() => (busy = false), 450);
-    }
+  // Speed = S.answerMs per question with ±S.jitter spread (even timing stands out on a leaderboard).
+  // Changing S.answerMs mid-run just applies from the next question.
+  let nextAnswerAt = 0;
+  const jittered = () => S.answerMs * (1 + (Math.random() * 2 - 1) * S.jitter);
+  function autoTick() {
+    if (!S.auto || Date.now() < nextAnswerAt) return;
+    const cont = leaf('Continue');
+    if (cont) { reactClick(cont); nextAnswerAt = Date.now() + jittered(); return; }
+    const q = currentQuestion();
+    const c = q && q.answers.find((a) => a.correct);
+    const span = c && answerSpan(c.text);
+    if (span) { reactClick(span); nextAnswerAt = Date.now() + 350 + Math.random() * 300; } // short beat before Continue
   }
 
   // --- Mission Control automation engine ---
   // Fire at most one armed, affordable action per pass, throttled, so result modals don't stack
   // and the server never sees a burst. All gating is client-side courtesy; the server is the real
   // backstop (it silently drops anything you can't afford).
-  function autoActionTick() {
-    if (!S.ws || S.ws.readyState !== 1 || !S.room) return;
-    const now = Date.now();
-    if (now - S.lastAction < 4000) return;
+  const CREW_ITEMS = ['privateInvestigation', 'publicInvestigation', 'noteViewer', 'meeting'];
+  const IMP_ITEMS = ['investigationRemover', 'fakeInvestigation', 'clearListRemover', 'blendIn'];
+  // Why an action can't fire right now ('' = ready). The UI shows this text on greyed rows.
+  function blockReason(id) {
     const items = shopItems();
-    if (!items.length) return;
+    const it = items.find((x) => x.id === id);
+    if (S.gameStatus === 'results') return 'Game over';
+    if (!it) {
+      if (amEliminated()) return "You're eliminated: only Donate is available";
+      if (id === 'donate') return "Only after you're voted out";
+      if (id === 'meeting' && myRole() === 'detective' && items.length) return 'Your teacher turned off student meetings';
+      if (CREW_ITEMS.includes(id) && myRole() === 'imposter') return 'Crewmate-only';
+      if (IMP_ITEMS.includes(id) && myRole() === 'detective') return 'Impostor-only';
+      return 'Not available right now';
+    }
+    if (id === 'meeting' && meetLeft() <= 0) return 'No meetings left';
+    if (USES_INVESTIGATION.has(id) && invLeft() <= 0) return 'No investigations left';
     const bal = balanceVal();
-    const tObj = S.people.find((p) => p.id === S.target);
-    const targetOk = !!(tObj && !tObj.votedOff && !(S.me && S.me.id === tObj.id));
-    for (const it of items) {
-      if (!it || !S.on[it.id]) continue;
-      const cost = it.cost || 0;
-      if (bal < cost) continue;
-      if (USES_INVESTIGATION.has(it.id) && invLeft() <= 0) continue;
-      if (it.id === 'meeting' && meetLeft() <= 0) continue;
-      if (it.id === 'donate' && bal <= 0) continue;
-      if (NO_TARGET.has(it.id)) { purchase(it.id); S.lastAction = now; return; }
-      if (!targetOk) continue;                 // targeted action needs a live target
-      purchase(it.id, S.target);
+    if (id === 'donate' && bal <= 0) return 'Nothing to donate yet';
+    if (id !== 'donate' && bal < (it.cost || 0)) return `Need ⚡${(it.cost || 0) - bal} more`;
+    if (!NO_TARGET.has(id) && !targetLive()) return 'Pick a target first';
+    return '';
+  }
+  function targetLive() {
+    const t = S.people.find((p) => p.id === S.target);
+    return !!(t && !t.votedOff && !(S.me && S.me.id === t.id));
+  }
+  // Armed actions in the order the round-robin will try them next (the UI shows "next up").
+  function queue() {
+    const armed = shopItems().filter((it) => it && S.on[it.id]);
+    if (!armed.length) return [];
+    const k = S.rr % armed.length;
+    return armed.slice(k).concat(armed.slice(0, k));
+  }
+  function doOnce(id) {
+    const r = blockReason(id);
+    if (r) { addLog('warn', r); return r; }
+    if (NO_TARGET.has(id)) purchase(id); else purchase(id, S.target);
+    return '';
+  }
+  function autoActionTick() {
+    if (!S.ws || S.ws.readyState !== 1 || !S.room || S.gameStatus === 'results') return;
+    const now = Date.now();
+    // Eliminated: donate the moment any energy arrives (outside the throttle).
+    if (S.on.donate && amEliminated() && !blockReason('donate')) { purchase('donate', S.target); S.lastAction = now; return; }
+    if (now - S.lastAction < S.actionEveryMs) return;
+    // Round-robin: try each armed action once, starting after the last one that fired, so a cheap
+    // action can't starve the pricier ones.
+    const armed = shopItems().filter((it) => it && S.on[it.id]);
+    for (let i = 0; i < armed.length; i++) {
+      const idx = (S.rr + i) % armed.length;
+      const it = armed[idx];
+      if (blockReason(it.id)) continue;
+      if (NO_TARGET.has(it.id)) purchase(it.id); else purchase(it.id, S.target);
+      S.rr = idx + 1;
       S.lastAction = now;
       return;
     }
+  }
+  // Auto-vote: one vote per voting phase, re-sent only if the target changes.
+  function autoVoteTick() {
+    if (S.status !== 'voting') { S.votedFor = ''; return; }
+    if (!S.autoVote || !targetLive() || amEliminated() || S.votedFor === S.target) return;
+    if (vote(S.target)) S.votedFor = S.target;
   }
 
   // Housekeeping loop: highlight/auto-answer + the Mission Control engine (own 4s throttle inside),
@@ -371,8 +471,10 @@
       highlightTick();
       autoTick();
       autoActionTick();
+      autoVoteTick();
+      detectMode();
       ticks++;
-      if (!S.people.length && (ticks % 8 === 0)) bootstrap();   // ~every 2s until we have the roster
+      if (!S.people.length && S.mode !== 'other' && (ticks % 8 === 0)) bootstrap();   // ~every 2s until we have the roster
       if (S.people.length && !S.me) resolveSelf();
       updateStatus();
     } catch (e) {}
@@ -461,8 +563,9 @@
   }
   bootstrap();
 
+  S.toggle = () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; if (panel.style.display !== 'none') render(); };
   addEventListener('keydown', (e) => {
-    if (e.key === 'Insert') { panel.style.display = panel.style.display === 'none' ? '' : 'none'; if (panel.style.display !== 'none') render(); }
+    if (e.key === 'Insert') S.toggle();
     else if (e.key === 'F8') { e.preventDefault(); S.auto = !S.auto; render(); }
   });
   S.requestPeople = requestPeople;
@@ -481,5 +584,19 @@
     phase: () => { const s = stores(); return (s && deref(s.imposter.status)) || S.status; },
     gameCode: () => new URLSearchParams(location.search).get('gc'),
     connected: () => !!(S.ws && S.ws.readyState === 1 && S.room),
+    mode: () => S.mode,                         // 'tno' | 'other' | 'unknown'
+    gameOver: () => S.gameStatus === 'results',
+    winner,                                     // 'Impostors win' | 'Crewmates win'
+    // Stuck on the results screen for a minute = host probably left (players can't advance it).
+    stalled: () => S.status === 'votingResult' && S.gameStatus !== 'results' && Date.now() - S.phaseSince > 60000,
+    // Voting never times out on its own: it waits for every vote or the host's "End Voting Early".
+    votingFor: () => (S.status === 'voting' ? Math.round((Date.now() - S.phaseSince) / 1000) : 0),
+    studentMeetingsOff: () => myRole() === 'detective' && !amEliminated() && shopItems().length > 0 && !shopItems().some((i) => i.id === 'meeting'),
+    blockReason, queue, targetLive,
+    otherScripts: () => [
+      window.stores && window.stores.assignment && 'Gimkit Cheat (TheLazySquid)',
+      !/\[native code\]/.test(String(Object.freeze)) && 'gimkit cheats (MOD MENU)',
+    ].filter(Boolean),
   };
+  S.doOnce = doOnce;
 })();
