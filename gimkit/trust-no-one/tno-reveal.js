@@ -1,0 +1,339 @@
+// Gimkit "Trust No One" (impostor mode) helper — read-only role reveal + answer assist.
+//
+// How it works:
+// 1) Impostor reveal: the Blueboat server sends IMPOSTER_MODE_PEOPLE (every player's real role)
+//    to ALL clients, and re-sends it whenever a client asks with IMPOSTER_MODE_REQUEST_PEOPLE
+//    (the game itself asks when you open the investigation picker). We ask on inject and on every
+//    phase change, so it works on a mid-game inject and ejections stay current.
+// 2) Answer highlight: the current question object ships with `correct` flags on its answers.
+// 3) Auto-answer (F8 toggle, off by default): clicks the correct answer, then Continue.
+//
+// Mode = classic (Blueboat), NOT Colyseus/Phaser: wss://<x>.gimkitconnect.com/blueboat (socket.io v2),
+// binary frames = 0x04 + msgpack {type:2, data:[event, payload], nsp:"/"}.
+// Insert = hide/show panel.  F8 = auto-answer.
+(() => {
+  if (window.__tnoReveal) return;
+  const S = (window.__tnoReveal = { people: [], me: null, status: '', ws: null, room: null, auto: false });
+
+  // --- minimal msgpack ---
+  const td = new TextDecoder();
+  const te = new TextEncoder();
+  function decode(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let o = 0;
+    const str = (n) => { const s = td.decode(u8.subarray(o, o + n)); o += n; return s; };
+    const arr = (n) => { const a = []; for (let i = 0; i < n; i++) a.push(read()); return a; };
+    const map = (n) => { const m = {}; for (let i = 0; i < n; i++) { const k = read(); m[k] = read(); } return m; };
+    const bin = (n) => { const b = u8.slice(o, o + n); o += n; return b; };
+    const ext = (n) => { o += 1 + n; return undefined; };
+    function read() {
+      const b = u8[o++];
+      if (b < 0x80) return b;
+      if (b < 0x90) return map(b & 0x0f);
+      if (b < 0xa0) return arr(b & 0x0f);
+      if (b < 0xc0) return str(b & 0x1f);
+      if (b >= 0xe0) return b - 0x100;
+      let v;
+      switch (b) {
+        case 0xc0: return null;
+        case 0xc2: return false;
+        case 0xc3: return true;
+        case 0xc4: v = u8[o]; o += 1; return bin(v);
+        case 0xc5: v = dv.getUint16(o); o += 2; return bin(v);
+        case 0xc6: v = dv.getUint32(o); o += 4; return bin(v);
+        case 0xc7: v = u8[o]; o += 1; return ext(v);
+        case 0xc8: v = dv.getUint16(o); o += 2; return ext(v);
+        case 0xc9: v = dv.getUint32(o); o += 4; return ext(v);
+        case 0xca: v = dv.getFloat32(o); o += 4; return v;
+        case 0xcb: v = dv.getFloat64(o); o += 8; return v;
+        case 0xcc: v = u8[o]; o += 1; return v;
+        case 0xcd: v = dv.getUint16(o); o += 2; return v;
+        case 0xce: v = dv.getUint32(o); o += 4; return v;
+        case 0xcf: v = Number(dv.getBigUint64(o)); o += 8; return v;
+        case 0xd0: v = dv.getInt8(o); o += 1; return v;
+        case 0xd1: v = dv.getInt16(o); o += 2; return v;
+        case 0xd2: v = dv.getInt32(o); o += 4; return v;
+        case 0xd3: v = Number(dv.getBigInt64(o)); o += 8; return v;
+        case 0xd4: return ext(1);
+        case 0xd5: return ext(2);
+        case 0xd6: return ext(4);
+        case 0xd7: return ext(8);
+        case 0xd8: return ext(16);
+        case 0xd9: v = u8[o]; o += 1; return str(v);
+        case 0xda: v = dv.getUint16(o); o += 2; return str(v);
+        case 0xdb: v = dv.getUint32(o); o += 4; return str(v);
+        case 0xdc: v = dv.getUint16(o); o += 2; return arr(v);
+        case 0xdd: v = dv.getUint32(o); o += 4; return arr(v);
+        case 0xde: v = dv.getUint16(o); o += 2; return map(v);
+        case 0xdf: v = dv.getUint32(o); o += 4; return map(v);
+      }
+      throw new Error('msgpack byte 0x' + b.toString(16));
+    }
+    return read();
+  }
+  // Encoder covering what Blueboat client frames use (maps, arrays, strings, small ints, bools,
+  // undefined as fixext1 type 0 — the same "d4 00 00" the game's notepack emits).
+  function encode(v, out = []) {
+    if (v === undefined) out.push(0xd4, 0, 0);
+    else if (v === null) out.push(0xc0);
+    else if (v === true) out.push(0xc3);
+    else if (v === false) out.push(0xc2);
+    else if (typeof v === 'number') {
+      if (Number.isInteger(v) && v >= 0 && v < 0x80) out.push(v);
+      else { const b = new DataView(new ArrayBuffer(8)); b.setFloat64(0, v); out.push(0xcb, ...new Uint8Array(b.buffer)); }
+    } else if (typeof v === 'string') {
+      const s = te.encode(v);
+      if (s.length < 32) out.push(0xa0 | s.length);
+      else if (s.length < 256) out.push(0xd9, s.length);
+      else out.push(0xda, s.length >> 8, s.length & 0xff);
+      out.push(...s);
+    } else if (Array.isArray(v)) {
+      out.push(0x90 | v.length);
+      v.forEach((x) => encode(x, out));
+    } else {
+      const ks = Object.keys(v);
+      out.push(0x80 | ks.length);
+      ks.forEach((k) => { encode(k, out); encode(v[k], out); });
+    }
+    return out;
+  }
+
+  function sendToRoom(key, data) {
+    if (!S.ws || S.ws.readyState !== 1 || !S.room) return false;
+    // The game omits `data` entirely when there is no payload (e.g. REQUEST_PEOPLE) — match that
+    // exactly rather than sending an explicit undefined, so we never trip server-side validation.
+    const inner = data === undefined ? { room: S.room, key } : { room: S.room, key, data };
+    const pkt = { type: 2, data: ['blueboat_SEND_MESSAGE', inner], options: { compress: true }, nsp: '/' };
+    S.ws.send(new Uint8Array([0x04, ...encode(pkt)]));
+    return true;
+  }
+  const requestPeople = () => sendToRoom('IMPOSTER_MODE_REQUEST_PEOPLE', undefined);
+
+  // Engine.io v3 binary frame: 0x04 + socket.io-msgpack packet {type, data:[event, payload], nsp}
+  function onFrame(ws, ab) {
+    const u8 = new Uint8Array(ab);
+    if (u8[0] !== 0x04) return;
+    let pkt;
+    try { pkt = decode(u8.subarray(1)); } catch (e) { return; }
+    if (!pkt || !Array.isArray(pkt.data)) return;
+    const [event, msg] = pkt.data;
+    if (typeof event === 'string' && event.startsWith('message-')) {
+      const firstSighting = !S.room;
+      S.ws = ws;
+      S.room = event.slice(8);
+      if (firstSighting && !S.people.length) setTimeout(requestPeople, 200);
+    }
+    if (!msg || !msg.key) return;
+    if (msg.key === 'IMPOSTER_MODE_PEOPLE' && Array.isArray(msg.data)) {
+      S.people = msg.data;
+      resolveSelf();
+      render();
+    } else if (msg.key === 'STATE_UPDATE' && msg.data) {
+      if (msg.data.type === 'IMPOSTER_MODE_PERSON') { S.me = msg.data.value; render(); }
+      else if (msg.data.type === 'IMPOSTER_MODE_STATUS' && msg.data.value !== S.status) {
+        S.status = msg.data.value;
+        // ejections aren't pushed — re-ask on every phase change (and once more after results settle)
+        setTimeout(requestPeople, 300);
+        setTimeout(requestPeople, 3000);
+      }
+    }
+  }
+
+  // Hook incoming without needing the socket instance: consumers read MessageEvent.data and
+  // `this.target` is the WebSocket. Catches the already-open lobby socket (mid-game inject).
+  const desc = Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'data');
+  const seen = new WeakSet();
+  Object.defineProperty(MessageEvent.prototype, 'data', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get() {
+      const d = desc.get.call(this);
+      try {
+        if (this.target instanceof WebSocket && d instanceof ArrayBuffer && !seen.has(this)) {
+          seen.add(this);
+          onFrame(this.target, d);
+        }
+      } catch (e) {}
+      return d;
+    },
+  });
+
+  // Mid-game inject: incoming binary traffic can be quiet for a while (idle "Continue" screens),
+  // so also learn the socket from the next outgoing frame (engine.io pings every ~25s) and the
+  // room id from React props — then we can ask for the roster without waiting for inbound traffic.
+  const origSend = WebSocket.prototype.send;
+  WebSocket.prototype.send = function () {
+    if (!S.ws && /gimkitconnect/.test(this.url)) { S.ws = this; bootstrap(); }
+    return origSend.apply(this, arguments);
+  };
+
+  // --- React helpers ---
+  function fiberOf(el) { const k = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); return k && el[k]; }
+  function reactRoot() {
+    const el = [...document.querySelectorAll('body *')].find((e) => fiberOf(e));
+    let f = el && fiberOf(el);
+    while (f && f.return) f = f.return;
+    return f;
+  }
+  // Walk the WHOLE fiber tree (child + sibling), not just the ancestor chain — joinDetails/user
+  // live on branches off to the side of any given DOM node.
+  function dfs(visit) {
+    let steps = 0;
+    (function rec(f, depth) {
+      if (!f || depth > 600 || steps > 8000) return;
+      steps++;
+      if (visit(f)) return; // truthy = stop
+      rec(f.child, depth + 1);
+      rec(f.sibling, depth);
+    })(reactRoot(), 0);
+  }
+  function roomFromReact() {
+    let found = null;
+    dfs((f) => {
+      const jd = f.memoizedProps && f.memoizedProps.joinDetails;
+      if (jd && typeof jd.roomId === 'string') { found = jd.roomId; return true; }
+    });
+    return found;
+  }
+  function ownName() {
+    let found = null;
+    dfs((f) => {
+      const u = f.memoizedProps && f.memoizedProps.user;
+      if (u && typeof u.name === 'string') { found = u.name; return true; }
+    });
+    return found;
+  }
+  // Prefer the authoritative IMPOSTER_MODE_PERSON (by id); fall back to matching our own display
+  // name against the roster (the React `user` object carries no id that matches the people list).
+  function resolveSelf() {
+    if (S.me && S.me.id) return;
+    const nm = ownName();
+    if (!nm) return;
+    const matches = S.people.filter((p) => p.name === nm);
+    if (matches.length === 1) S.me = { id: matches[0].id, name: nm, role: matches[0].role, byName: true };
+  }
+
+  function bootstrap() {
+    if (!S.room) S.room = roomFromReact();
+    if (S.ws && S.room && !S.people.length) requestPeople();
+    render();
+  }
+
+  // --- answers ---
+  function currentQuestion() {
+    const start = document.querySelector('span.notranslate');
+    if (!start) return null;
+    let f = fiberOf(start), i = 0;
+    while (f && i < 80) {
+      let h = f.memoizedState, j = 0;
+      while (h && j < 50) {
+        const v = h.memoizedState;
+        if (Array.isArray(v) && v[0] && Array.isArray(v[0].answers) && v[0].text !== undefined) return v[0];
+        h = h.next; j++;
+      }
+      f = f.return; i++;
+    }
+    return null;
+  }
+  // Answer/continue buttons ignore synthetic DOM clicks; call the React onClick prop instead.
+  function reactClick(el) {
+    let f = fiberOf(el), i = 0;
+    while (f && i < 15) {
+      const p = f.memoizedProps;
+      if (p && typeof p.onClick === 'function') { p.onClick({ preventDefault() {}, stopPropagation() {} }); return true; }
+      f = f.return; i++;
+    }
+    return false;
+  }
+  const leaf = (t) => [...document.querySelectorAll('button,div,span')].find((e) => e.children.length === 0 && e.textContent.trim() === t);
+  const answerSpan = (t) => [...document.querySelectorAll('span.notranslate')].find((e) => e.textContent.trim() === t);
+  function answerBox(span) {
+    for (let el = span; el && el !== document.body; el = el.parentElement) {
+      const p = fiberOf(el) && fiberOf(el).memoizedProps;
+      if (p && typeof p.onClick === 'function') return el;
+    }
+    return span;
+  }
+
+  let marked = null;
+  function highlightTick() {
+    const q = currentQuestion();
+    const c = q && q.answers.find((a) => a.correct);
+    const span = c && answerSpan(c.text);
+    const box = span && answerBox(span);
+    if (box === marked) return;
+    if (marked) { marked.style.outline = ''; marked.style.outlineOffset = ''; }
+    marked = box || null;
+    if (marked) { marked.style.outline = '4px solid #56d364'; marked.style.outlineOffset = '-6px'; }
+  }
+  let busy = false;
+  async function autoTick() {
+    if (!S.auto || busy) return;
+    busy = true;
+    try {
+      const cont = leaf('Continue');
+      if (cont) { reactClick(cont); return; }
+      const q = currentQuestion();
+      const c = q && q.answers.find((a) => a.correct);
+      const span = c && answerSpan(c.text);
+      if (span) reactClick(span);
+    } finally {
+      setTimeout(() => (busy = false), 450);
+    }
+  }
+
+  // Housekeeping loop: highlight/auto every 250ms; also keep retrying the handshake until the
+  // roster is in, so an idle-screen inject still resolves itself as soon as ws + room are known.
+  let ticks = 0;
+  setInterval(() => {
+    try {
+      highlightTick();
+      autoTick();
+      ticks++;
+      if (!S.people.length && (ticks % 8 === 0)) bootstrap();   // ~every 2s until we have the roster
+      if (S.people.length && !S.me) resolveSelf();
+    } catch (e) {}
+  }, 250);
+
+  // --- panel ---
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'position:fixed;top:12px;right:12px;z-index:2147483647;min-width:200px;padding:10px 12px;' +
+    'background:rgba(10,14,20,.88);color:#e6edf3;font:13px/1.45 system-ui,sans-serif;' +
+    'border:1px solid #30363d;border-radius:8px;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+  document.documentElement.appendChild(panel);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function render() {
+    const foot = `<div style="margin-top:6px;opacity:.55;font-size:11px">F8 auto-answer: <b style="color:${S.auto ? '#56d364' : '#8b949e'}">${S.auto ? 'ON' : 'off'}</b> · Ins hide</div>`;
+    if (!S.people.length) {
+      panel.innerHTML = `<b>TNO reveal</b><br><span style="opacity:.7">${S.room ? 'asking server…' : 'waiting for game traffic…'}</span>${foot}`;
+      return;
+    }
+    const rows = S.people
+      .slice()
+      .sort((a, b) => (a.role === 'imposter' ? 0 : 1) - (b.role === 'imposter' ? 0 : 1))
+      .map((p) => {
+        const imp = p.role === 'imposter';
+        const self = S.me && S.me.id === p.id;
+        const tags = [p.votedOff && 'ejected', p.markedAsClear && 'clear'].filter(Boolean).join(', ');
+        return (
+          `<div style="${p.votedOff ? 'opacity:.45;text-decoration:line-through;' : ''}` +
+          `${self ? 'outline:1px solid #8b949e;border-radius:4px;padding:0 3px;' : ''}">` +
+          `<span style="color:${imp ? '#ff5c5c' : '#56d364'}">${imp ? '🔪' : '🔍'}</span> ` +
+          `${esc(p.name)}${self ? ' <span style="opacity:.6">(you)</span>' : ''}` +
+          `${tags ? ` <span style="opacity:.6">(${tags})</span>` : ''}</div>`
+        );
+      })
+      .join('');
+    const left = S.people.filter((p) => p.role === 'imposter' && !p.votedOff).length;
+    panel.innerHTML = `<b>TNO reveal</b> <span style="opacity:.6">· ${left} impostor(s) left</span>${rows}${foot}`;
+  }
+  bootstrap();
+
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Insert') panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    else if (e.key === 'F8') { e.preventDefault(); S.auto = !S.auto; render(); }
+  });
+  S.requestPeople = requestPeople;
+})();
