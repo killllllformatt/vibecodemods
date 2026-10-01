@@ -9,7 +9,7 @@ merged into one mode-detecting menu eventually, built from this code.
 
 | Mode | File | What it does |
 | --- | --- | --- |
-| Trust No One | [`trust-no-one/tno-reveal.js`](trust-no-one/tno-reveal.js) | Reveals every player's real role (impostor vs detective), highlights the correct answer, optional F8 auto-answer. |
+| Trust No One | [`trust-no-one/tno-reveal.js`](trust-no-one/tno-reveal.js) | Reveals every player's real role (impostor vs detective), highlights the correct answer, optional F8 auto-answer, and auto-runs Mission Control actions (investigate / note look / meeting / impostor sabotage / donate) on a chosen target when you can afford them. |
 | Snowy Survival | [`snowy-survival/snowy-esp.js`](snowy-survival/snowy-esp.js) | Zombie/human infection ESP: boxes + tracers by infection status, health/shield bars, live roster. |
 
 Each file is a self-contained IIFE. To run: paste it inline into the page console (the live site's
@@ -33,7 +33,25 @@ CSP blocks loading from `127.0.0.1`, so inline is the reliable path). Both toggl
 - Idle screens send no frames; the socket (`ws`) is only captured on the next engine.io ping (~25s)
   or any outgoing frame. No reachable socket.io instance in React (module closure).
 - Answers: current question object (fiber hook) carries `answers[].correct` client-side. Buttons
-  ignore synthetic DOM clicks — call the React `memoizedProps.onClick` instead.
+  ignore synthetic DOM clicks — call the React `memoizedProps.onClick` instead. (Answer text in the
+  data sometimes has a trailing space — trim both sides when matching to the DOM span.)
+
+  _Mission Control economy (all live-verified 2026-09-30):_
+  - Every action is ONE frame: `IMPOSTER_MODE_PURCHASE {item, on?}` (`on` = target id; omitted for
+    no-target actions). A vote is its own frame: `IMPOSTER_MODE_VOTE` = the target id (bare string).
+  - Crewmate shop ids/costs: `privateInvestigation` ⚡7, `publicInvestigation` ⚡15,
+    `noteViewer` ⚡7 (reads the target's notes → result in `SUCCESS_MODAL_INFO`), `meeting` ⚡10 (no target).
+  - Impostor shop ids/costs: `investigationRemover` ⚡10, `fakeInvestigation` ⚡6, `clearListRemover`
+    ("Unclear") ⚡15, `blendIn` ("Disguise") ⚡15 (no target). Read the live list instead of hardcoding
+    per role: MobX `imposter.shopItems` (`[{id,name,cost,...}]`), balance = `balance.balance`, limits
+    = `imposter.investigationsLeft` / `imposter.meetingsLeft`, eliminated = `imposter.me.votedOff`.
+    Reach the stores by fiber DFS for props with `imposter && balance && navigation`; deref via `value_`.
+  - When voted out, the shop becomes just `donate` — `IMPOSTER_MODE_PURCHASE {item:"donate", on}`
+    moves your WHOLE current balance to the target.
+  - **Server-authoritative on energy (so no free actions / no bypass):** a purchase you can't afford
+    is silently dropped (no deduct, no result); a donation only ever moves the energy you really have
+    (donating at ⚡0 transfers 0 — no infinite). So automation just gates on `balance >= cost` and
+    fires the frame; the server is the backstop.
 
 **Snowy Survival = Creative mode = Colyseus + Phaser (different stack entirely).**
 - Acquire the running scene by wrapping `Phaser.Scenes.Systems.prototype.step` (fires each frame
