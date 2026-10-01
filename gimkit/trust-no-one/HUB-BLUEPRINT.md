@@ -101,6 +101,11 @@ Sources: `purchase(item, on)`, `S.on{}` (armed set), `autoActionTick()`; add a t
   wire to `S.auto` but drop the F8 listener).
 - **Auto-answer speed**: a speed control so you can see/choose how fast you're answering. Changing
   speed mid-run must apply cleanly (restart the timer safely) — Claude Design owns that detail.
+- **Your stats**: `correct ✓ · incorrect ✗ · total · accuracy% · streak`. Read from the `questions`
+  MobX store: `questionsAnsweredCorrectly`, `questionsAnsweredIncorrectly` (total = sum, accuracy =
+  correct / total), streak = `balance.streakAmount`. **These persist in the store, so a mid-game
+  inject shows the accumulated totals even for questions you answered before injecting** (verified).
+  Note: this is *your own* answering stat — other players' counts aren't on your client.
 
 ### 4. Log  *(running intel feed)*
 Scrolling feed: investigation results (yours + public), players cleared, notes you peeked,
@@ -119,6 +124,8 @@ position, danger-actions acknowledgement. Mirrors STAX's lightweight settings.
 - **Do-once** calls (thin wrappers over `purchase()`), separate from the Auto toggles.
 - Parameterize the auto-answer interval (speed control); drop the F8 keybind.
 - Render the full both-role catalog (static table above) and grey rows not in live `shopItems()`.
+- Stat getters off the `questions` store (`questionsAnsweredCorrectly` / `questionsAnsweredIncorrectly`)
+  + `balance.streakAmount`, with derived total and accuracy.
 
 ## Edge cases the hub must handle
 - **Wrong page / not in a TNO game:** show "not in a Trust No One game" instead of an empty panel.
