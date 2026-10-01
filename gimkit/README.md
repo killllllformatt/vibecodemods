@@ -16,6 +16,10 @@ Each file is a self-contained IIFE. To run: paste it inline into the page consol
 CSP blocks loading from `127.0.0.1`, so inline is the reliable path). Both toggle their panel with
 **Insert**. Wrapping into a bookmarklet is a later step — don't add that machinery back here.
 
+Trust No One also has [`trust-no-one/HUB-BLUEPRINT.md`](trust-no-one/HUB-BLUEPRINT.md) — the
+tab/feature spec for Claude Design to build its section of the unified hub (STAX-hub look). The
+`.js` is the logic; the blueprint is the UI hand-off.
+
 ## Build knowledge (so future-me can extend / merge these)
 
 **Trust No One = classic mode = Blueboat, NOT Colyseus/Phaser.**
