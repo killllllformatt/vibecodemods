@@ -28,7 +28,7 @@ Above the tabs is an always-visible **header strip** with role, ⚡ energy and t
 
 ## 2. Look & feel: match the STAX hub exactly
 
-Reference: [`design/stax-hub-reference.png`](design/stax-hub-reference.png). Source CSS is in
+Reference: [`design/reference-stax-hub.png`](design/reference-stax-hub.png). Source CSS is in
 [`../../buildyourstax/stax-hub.js`](../../buildyourstax/stax-hub.js) (`// ---------- UI ----------`).
 Lift the CSS from there rather than re-creating it.
 
@@ -284,5 +284,5 @@ works through `requestPeople`.
 ## 10. Reference
 - Logic: [`tno-reveal.js`](tno-reveal.js) (`window.__tnoReveal`, §3)
 - Protocol notes: [`../README.md`](../README.md)
-- Look: [`design/stax-hub-reference.png`](design/stax-hub-reference.png), [`../../buildyourstax/stax-hub.js`](../../buildyourstax/stax-hub.js)
+- Look: [`design/reference-stax-hub.png`](design/reference-stax-hub.png), [`../../buildyourstax/stax-hub.js`](../../buildyourstax/stax-hub.js)
 - Current debug panel in a live game: [`design/tno-in-game-current-tool.png`](design/tno-in-game-current-tool.png)
