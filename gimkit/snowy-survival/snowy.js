@@ -89,48 +89,74 @@
   };
 
   // ---- draw ----
+  // Where a character really is on screen. The camera lags behind you and stops at map edges, so
+  // the screen centre is NOT your character — always project world → screen. When a character is on
+  // camera use its rendered sprite (spine, anchored at the feet); off camera the sprite isn't updated,
+  // so fall back to the physics body (which sits ~13px above the feet).
+  const FEET_BELOW_BODY = 13, CHAR_H = 70, CHAR_W = 52;  // world px
+  const feetOf = ch => {
+    const sp = ch.spine && (ch.spine.spine || ch.spine);
+    if (sp && sp.visible && ch.culling && ch.culling.isInCamera && isFinite(sp.x)) return { x: sp.x, y: sp.y };
+    return { x: ch.body.x, y: ch.body.y + FEET_BELOW_BODY };
+  };
   const draw = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (cfg.hidden || !scene) return;
     let cam, chars, me;
     try { cam = scene.cameras.main; chars = [...scene.characterManager.characters.values()]; me = chars.find(c => c.isMain); } catch { return; }
-    if (!cam) return;
+    if (!cam || !cam.worldView.width) return;
     const wv = cam.worldView;
-    const sx = innerWidth / cam.width, sy = innerHeight / cam.height;
-    const w2s = (wx, wy) => ({ x: (wx - wv.x) / wv.width * cam.width * sx, y: (wy - wv.y) / wv.height * cam.height * sy });
-    const cx = innerWidth / 2, cy = innerHeight / 2;
+    // Map through the game canvas's real box (handles zoom, letterboxing, non-fullscreen layouts).
+    const rect = (scene.sys.game.canvas || canvas).getBoundingClientRect();
+    const kx = rect.width / wv.width, ky = rect.height / wv.height;
+    const w2s = (wx, wy) => ({ x: rect.left + (wx - wv.x) * kx, y: rect.top + (wy - wv.y) * ky });
+    const centreOf = ch => { const f = feetOf(ch); return w2s(f.x, f.y - CHAR_H / 2); };
+    const origin = me ? centreOf(me) : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const bw = CHAR_W * kx, bh = CHAR_H * ky;
 
     for (const ch of chars) {
       if (ch.isMain) continue;
-      let bx, by; try { bx = ch.body.x; by = ch.body.y; } catch { continue; }
-      if (bx == null) continue;
+      try { if (ch.body.x == null) continue; } catch { continue; }
       const info = authInfo(ch.id) || {};
       const kind = teamKind(info.team);
       if (!showKind(kind)) continue;
-      const s = w2s(bx, by); if (!isFinite(s.x)) continue;
+      const c = centreOf(ch); if (!isFinite(c.x)) continue;
+      const top = c.y - bh / 2;
       const color = info.alive === false ? COL.dead : COL[kind];
 
-      const bw = 30, bh = 46;
-      if (cfg.boxes) { ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.strokeRect(s.x - bw / 2, s.y - bh, bw, bh); }
-      if (cfg.tracers) { ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.globalAlpha = kind === 'zombie' ? 0.85 : 0.55; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(s.x, s.y); ctx.stroke(); ctx.globalAlpha = 1; }
+      if (cfg.boxes) { ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.strokeRect(c.x - bw / 2, top, bw, bh); }
+      if (cfg.tracers) { ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.globalAlpha = kind === 'zombie' ? 0.85 : 0.55; ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(c.x, c.y); ctx.stroke(); ctx.globalAlpha = 1; }
       if (cfg.health && info.maxHp) {
         const frac = Math.max(0, Math.min(1, (info.hp + info.shield) / (info.maxHp)));
-        ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(s.x - bw / 2, s.y - bh - 6, bw, 4);
-        ctx.fillStyle = info.shield > 0 ? '#5bd1ff' : '#ff5b5b'; ctx.fillRect(s.x - bw / 2, s.y - bh - 6, bw * frac, 4);
+        ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(c.x - bw / 2, top - 6, bw, 4);
+        ctx.fillStyle = info.shield > 0 ? '#5bd1ff' : '#ff5b5b'; ctx.fillRect(c.x - bw / 2, top - 6, bw * frac, 4);
       }
       if (cfg.names) {
         let label = (info.name || ch.type || '?');
         if (kind === 'zombie') label = '🧟 ' + label; else if (kind === 'human') label = '🏃 ' + label;
         if (info.immune) label += ' ⛨';
-        if (me) label += '  ' + Math.round(Math.hypot(bx - me.body.x, by - me.body.y));
+        if (me) label += '  ' + Math.round(Math.hypot(ch.body.x - me.body.x, ch.body.y - me.body.y));
         ctx.font = 'bold 12px system-ui,sans-serif'; ctx.textAlign = 'center';
         const tw = ctx.measureText(label).width;
-        ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(s.x - tw / 2 - 4, s.y - bh - 24, tw + 8, 15);
-        ctx.fillStyle = color; ctx.fillText(label, s.x, s.y - bh - 12);
+        ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(c.x - tw / 2 - 4, top - 24, tw + 8, 15);
+        ctx.fillStyle = color; ctx.fillText(label, c.x, top - 12);
       }
     }
   };
-  let raf; const loop = () => { draw(); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
+  // Draw right after Phaser renders each frame, so camera and sprite positions are the ones on screen
+  // (a separate rAF can run before the game's update and draw a frame behind → lines wobble).
+  // rAF fallback until the scene is found / if the event isn't available.
+  let raf, synced = false;
+  const onPost = () => draw();
+  const loop = () => {
+    if (!synced && scene && scene.sys && scene.sys.game && scene.sys.game.events) {
+      scene.sys.game.events.on('postrender', onPost); synced = true;
+      cleanups.push(() => { try { scene.sys.game.events.off('postrender', onPost); } catch {} });
+    }
+    if (!synced) draw();
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
   cleanups.push(() => cancelAnimationFrame(raf));
 
   // ---- questions ----
