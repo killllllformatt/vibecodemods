@@ -16,9 +16,16 @@ protocol. Make it look **identical to the STAX hub** (`../../buildyourstax/`).
 - Risky/visible actions carry a **danger label** (as STAX does).
 
 ## Always-visible header strip
-`role (🔪 impostor / 🔍 crewmate / 👻 eliminated) · ⚡ energy · impostors left · investigations left · meetings left`
-Sources: `myRole()`, `balanceVal()`, roster count, `invLeft()`, `meetLeft()`, `amEliminated()`.
-Energy ⚡ is a prominent live counter (also shown on the Actions tab).
+`game code · role (🔪 impostor / 🔍 crewmate / 👻 eliminated) · ⚡ energy · impostors left · investigations left · meetings left`
+Sources: game code = `new URLSearchParams(location.search).get('gc')` (the join URL keeps `?gc=` in
+game; it is NOT in React/player state — `gameValues.gameCode` is null on a player, so use the URL
+and fall back to "—" if absent). Then `myRole()`, `balanceVal()`, roster count, `invLeft()`,
+`meetLeft()`, `amEliminated()`. Energy ⚡ is a prominent live counter (also shown on the Actions tab).
+
+> **Confirmed on a cold mid-game inject:** full roster with every true role, who's "you", and
+> ejected/clear flags all resolve (roster via `IMPOSTER_MODE_REQUEST_PEOPLE`, room via
+> `joinDetails.roomId`), plus the game code from the URL. The socket is captured on the next
+> outgoing frame / engine.io ping (≤~25s) if the inject lands on a totally idle screen.
 
 ## Tabs: Roles · Actions · Answers · Log · Settings
 
