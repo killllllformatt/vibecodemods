@@ -11,7 +11,8 @@
 //   server — no question screen needed. Each question is answered ONCE: the server counts an answer
 //   to a question you've already moved past as WRONG, so we never resend until it advances.
 // - Minimap: the whole map in a corner (terrain + walls) with every player as a dot: you, cursed and
-//   humans in different colours, plus your camera view. M = big map. Look by Claude Design (Minimap.dc.html), knobs in __snowy.minimap.theme;
+//   humans in different colours. Drag it anywhere; slider = size (names appear when it's big). Optional
+//   box showing your screen. Look by Claude Design (Minimap.dc.html), knobs in __snowy.minimap.theme;
 //   raw data for a custom UI = __snowy.api.minimap().
 // - Fun (client-side only — nobody else sees it): spinbot, Shrek skin (you or everyone), or any
 //   image you pick as your skin.
@@ -64,7 +65,7 @@
   const isSnowy = () => { try { return /\/modes\/snowInfection\//.test(JSON.parse(room().state.mapSettings).musicUrl || ''); } catch { return false; } };
 
   // ---- config + colors ----
-  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, mapBig: false, hidden: false };
+  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, screenBox: false, hidden: false };
   const COL = { zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#666' };
 
   // team "2" = cursed, "1" = human in snowInfection. Lobby / other modes / unassigned → neutral.
@@ -257,20 +258,20 @@
   const TILE = 64;
   // Look = Claude Design's spec (Minimap.dc.html). Sizes in CSS px.
   const mmTheme = {
-    size: 240,               // longest side of the small map
-    bigSize: 720,            // longest side of the big map (shrinks to fit small screens)
-    corner: 'bottom-right',  // bottom-right | bottom-left | top-right | top-left  (top-right = Gimkit's buttons + energy)
+    size: 240,               // default longest side of the map (slider changes it; remembered per browser)
+    minSize: 160, maxSize: 900,
+    labelsFrom: 400,         // show names once the map is at least this big
+    bigFrom: 480,            // switch to the larger dot style from this size
+    corner: 'bottom-right',  // where it starts before you drag it (top-right = Gimkit's buttons + energy)
     margin: 12, radius: 10, clipRadius: 4, bigClipRadius: 6,
-    frame: 'rgba(18,20,26,.92)', bigFrame: 'rgba(18,20,26,.95)', frameBorder: '#c353ff', framePad: 6, opacity: 1,
-    shadow: '0 4px 14px rgba(0,0,0,.35)', bigShadow: '0 12px 40px rgba(0,0,0,.45)',
-    dim: 'rgba(8,10,16,.45)',  // behind the big map (the mod panel stays above it)
-    bigLeft: 242,            // big map is centred in the space right of the mod panel
+    frame: 'rgba(18,20,26,.92)', frameBorder: '#c353ff', framePad: 6, opacity: 1,
+    shadow: '0 4px 14px rgba(0,0,0,.35)',
     background: '#eef3f7',
     terrain: { 'Snowy Grass': '#cfe0d2', 'Light Scraps': '#cfd2d6', 'Dark Scraps': '#5e6168', 'Sand': '#f1dcae',
       'Dry Grass': '#eab676', 'Dirt': '#b08862', 'Water': '#6bb6ea', 'Frozen Lake': '#b6dcf2' },
     terrainFallback: '#dde3e8',
     wall: '#3b4250', wallAlpha: 1, soft: '#a3afbd', tree: '#8fa394', fenceWidth: 1.25,
-    view: 'rgba(16,19,26,.75)', viewInner: 'rgba(255,255,255,.7)', viewWidth: 1, bigViewWidth: 1.5, showView: true,
+    view: 'rgba(16,19,26,.75)', viewInner: 'rgba(255,255,255,.7)', viewWidth: 1, bigViewWidth: 1.5,
     dot: { me: '#4db6ff', zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#8a8f98' },
     dotRadius: 3.5, crowdRadius: 3, crowdAbove: 30, bigDotRadius: 5,
     dotOutline: 'rgba(16,19,26,.85)', ink: '#10131a',
@@ -280,7 +281,6 @@
     // your dot = blue fill + rings outward: ink, white, team colour, hairline, halo (outer radius of each)
     meRings: { r: 5, ink: 1, white: 2.5, team: 4.5, hair: 5.5, halo: 9.5 },
     bigMeRings: { r: 6.5, ink: 1.5, white: 3.5, team: 6, hair: 7, halo: 13 },
-    labels: false,           // names on the small map (the big map always shows them)
     labelFont: '600 11px system-ui,sans-serif', meLabelFont: '700 11px system-ui,sans-serif', labelHalo: 'rgba(255,255,255,.95)',
     labelColor: { me: '#0a4a78', zombie: '#5b1590', human: '#14572a', neutral: '#6b4f00', dead: '#4f545c' },
   };
@@ -407,42 +407,59 @@
   };
 
   // ---- renderer (design: Minimap.dc.html) ----
-  // DOM for the frames/strip/header/legend (rewritten only when their text changes), one canvas per
-  // view for the map. Terrain + walls are pre-rendered per size; per frame only dots and the view box
-  // are drawn. Dots are NOT clipped to the map: the canvas extends into the frame padding so a player
-  // on the outer fence stays whole.
-  const Z_MAP = 2147483645, Z_BIG = 2147483646;   // ESP overlay sits under both; the mod panel above both
+  // One map: drag it anywhere, size slider in its bottom strip. DOM for the frame/strip (rewritten
+  // only when the text changes), one canvas for the map. Terrain + walls are pre-rendered per size;
+  // per frame only dots (and the optional screen box) are drawn. Dots are NOT clipped to the map: the
+  // canvas extends into the frame padding so a player on the outer fence stays whole.
+  const Z_MAP = 2147483645;   // ESP overlay sits under it; the mod panel above it
   const mkEl = (tag, css, html) => { const el = document.createElement(tag); if (css) el.style.cssText = css; if (html != null) el.innerHTML = html; return el; };
-  const chip = (filled) => `<span style="font:700 9px/12px system-ui,sans-serif;border-radius:3px;padding:0 4px;${filled
-    ? 'color:#12141a;background:#c353ff;border:1px solid #c353ff' : 'color:#d6d9e0;border:1px solid #3a3f4b'}">M</span>`;
   const swatch = (c, s = 7) => `<span style="width:${s}px;height:${s}px;border-radius:50%;background:${c};flex:none"></span>`;
   const T = mmTheme;
 
-  // small (corner)
-  const mmSmall = mkEl('div', `position:fixed;z-index:${Z_MAP};pointer-events:none;display:none;box-sizing:border-box;`);
-  const mmSmallBox = mkEl('div', 'position:relative');
-  const mmSmallCv = mkEl('canvas', 'position:absolute;display:block');
+  // size + position are a per-browser convenience; everything works if storage is blocked
+  const PREF = 'vcm-snowy-minimap';
+  const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch { return {}; } })();
+  const savePref = () => { try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch {} };
+  let mapSize = Math.max(T.minSize, Math.min(T.maxSize, +pref.size || T.size));
+
+  const mmFrame = mkEl('div', `position:fixed;z-index:${Z_MAP};display:none;box-sizing:border-box;cursor:grab;user-select:none;touch-action:none`);
+  const mmBox = mkEl('div', 'position:relative');
+  const mmCv = mkEl('canvas', 'position:absolute;display:block;pointer-events:none');
   const mmStrip = mkEl('div', 'display:flex;align-items:center;gap:9px;margin-top:5px;height:14px;padding:0 2px;font:600 10px/14px system-ui,sans-serif;color:#d6d9e0;white-space:nowrap');
-  mmSmallBox.appendChild(mmSmallCv); mmSmall.append(mmSmallBox, mmStrip);
-  // big (M)
-  const mmDim = mkEl('div', `position:fixed;inset:0;z-index:${Z_BIG};pointer-events:none;display:none`);
-  const mmBig = mkEl('div', `position:fixed;z-index:${Z_BIG};pointer-events:none;display:none;box-sizing:border-box;padding:10px 12px 12px;display:none;flex-direction:column;gap:9px;border-radius:12px`);
-  const mmHead = mkEl('div', 'display:flex;align-items:center;gap:14px;height:18px;font:600 12px/18px system-ui,sans-serif;color:#d6d9e0;white-space:nowrap');
-  const mmBigBox = mkEl('div', 'position:relative');
-  const mmBigCv = mkEl('canvas', 'position:absolute;display:block');
-  const legendYou = mkEl('span', 'width:8px;height:8px;border-radius:50%;flex:none');
-  const mmLegend = mkEl('div', 'display:flex;align-items:center;gap:16px;height:14px;font:500 11px/14px system-ui,sans-serif;color:#a3a9b7;white-space:nowrap');
-  const legendItem = (dotEl, text) => { const s = mkEl('span', 'display:flex;align-items:center;gap:6px'); s.append(dotEl, document.createTextNode(text)); return s; };
-  mmLegend.append(
-    legendItem(legendYou, 'You'),
-    legendItem(mkEl('span', `width:8px;height:8px;border-radius:50%;background:${T.dot.zombie}`), 'Cursed'),
-    legendItem(mkEl('span', `width:8px;height:8px;border-radius:50%;background:${T.dot.human}`), 'Human'),
-    legendItem(mkEl('span', 'width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1.5px dashed #fff'), 'Spawn-immune'),
-    legendItem(mkEl('span', `width:8px;height:8px;box-sizing:border-box;border-radius:50%;border:1.5px solid ${T.dot.dead}`), 'Knocked out'),
-    mkEl('span', 'margin-left:auto;color:#6f7584', 'Box = your screen'));
-  mmBigBox.appendChild(mmBigCv); mmBig.append(mmHead, mmBigBox, mmLegend);
-  document.body.append(mmSmall, mmDim, mmBig);
-  cleanups.push(() => { mmSmall.remove(); mmDim.remove(); mmBig.remove(); });
+  const mmInfo = mkEl('span', 'display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden');
+  const mmSlider = mkEl('input', 'flex:1;min-width:50px;max-width:140px;height:12px;margin:0 0 0 auto;accent-color:#c353ff;cursor:pointer');
+  Object.assign(mmSlider, { type: 'range', min: T.minSize, max: T.maxSize, step: 10, value: mapSize, title: 'Map size' });
+  mmStrip.append(mmInfo, mmSlider); mmBox.appendChild(mmCv); mmFrame.append(mmBox, mmStrip);
+  document.body.appendChild(mmFrame);
+  cleanups.push(() => mmFrame.remove());
+  // While resizing, the map grows/shrinks from its bottom-right corner, so the slider (right end of the
+  // strip) stays under the cursor instead of running away from it.
+  let anchor = null;
+  const setAnchor = () => { if (!anchor) { const r = mmFrame.getBoundingClientRect(); anchor = { right: r.right, bottom: r.bottom }; } };
+  mmSlider.addEventListener('pointerdown', setAnchor);
+  mmSlider.addEventListener('input', () => { setAnchor(); mapSize = +mmSlider.value; pref.size = mapSize; savePref(); });
+  // give the keyboard back to the game (arrow keys would otherwise move the slider, not you)
+  const releaseSlider = () => setTimeout(() => { mmSlider.blur(); if (anchor) { anchor = null; pref.pos = pos; savePref(); } }, 0);
+  mmSlider.addEventListener('pointerup', releaseSlider); mmSlider.addEventListener('change', releaseSlider);
+
+  // dragging: anywhere on the frame except the slider. Position is the frame's top-left, kept on screen.
+  let pos = pref.pos && isFinite(pref.pos.x) ? { x: pref.pos.x, y: pref.pos.y } : null;
+  let drag = null;
+  mmFrame.addEventListener('pointerdown', ev => {
+    if (ev.target === mmSlider || ev.button !== 0) return;
+    const r = mmFrame.getBoundingClientRect();
+    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, id: ev.pointerId };
+    try { mmFrame.setPointerCapture(ev.pointerId); } catch {}
+    mmFrame.style.cursor = 'grabbing'; ev.preventDefault(); ev.stopPropagation();
+  });
+  mmFrame.addEventListener('pointermove', ev => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    pos = { x: ev.clientX - drag.dx, y: ev.clientY - drag.dy }; ev.preventDefault(); ev.stopPropagation();
+  });
+  const endDrag = ev => { if (!drag) return; drag = null; mmFrame.style.cursor = 'grab'; pref.pos = pos; savePref(); ev.stopPropagation(); };
+  mmFrame.addEventListener('pointerup', endDrag); mmFrame.addEventListener('pointercancel', endDrag);
+  // keep the game from reacting to clicks/drags on the map
+  for (const t of ['mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) mmFrame.addEventListener(t, ev => ev.stopPropagation());
 
   const terrainColor = name => T.terrain[name] || T.terrainFallback;
   const layers = new Map();   // `${sig}|${w}x${h}` -> canvas
@@ -470,10 +487,13 @@
     g.globalAlpha = 1;
     return c;
   };
-  const layerFor = (e, W, H, dpr) => {
-    const key = mm.sig + '|' + W + 'x' + H;
+  // Pre-rendering is per size, so dragging the slider would rebuild every step: build at the nearest
+  // 80px bucket at or above the size and let drawImage scale down a little.
+  const layerFor = (e, mapW, mapH, dpr) => {
+    const bucket = Math.ceil(Math.max(mapW, mapH) / 80) * 80, s = bucket / Math.max(mapW, mapH);
+    const W = Math.round(mapW * s * dpr), H = Math.round(mapH * s * dpr), key = mm.sig + '|' + W + 'x' + H;
     let c = layers.get(key);
-    if (!c) { if (layers.size > 4) layers.clear(); c = buildLayer(e, W, H, dpr); layers.set(key, c); }
+    if (!c) { if (layers.size > 6) layers.clear(); c = buildLayer(e, W, H, dpr * s); layers.set(key, c); }
     return c;
   };
 
@@ -481,8 +501,9 @@
   const circle = (g, x, y, r, fill) => { g.beginPath(); g.arc(x, y, Math.max(0, r), 0, Math.PI * 2); g.fillStyle = fill; g.fill(); };
 
   // Draw the map + dots into canvas `cv` whose (pad,pad) is the map's top-left.
-  const drawMap = (cv, data, mapW, mapH, pad, big) => {
-    const e = data.extent, dpr = devicePixelRatio || 1;
+  const drawMap = (cv, data, mapW, mapH, pad) => {
+    const e = data.extent, dpr = devicePixelRatio || 1, longest = Math.max(mapW, mapH);
+    const big = longest >= T.bigFrom;
     const cw = mapW + pad * 2, ch = mapH + pad * 2;
     if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) {
       cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
@@ -491,12 +512,12 @@
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, cw, ch);
     const k = mapW / e.w;
     const toMap = (x, y) => [pad + (x - e.x) * k, pad + (y - e.y) * k];
-    // terrain + view box, clipped to the map's rounded rect
+    // terrain + screen box, clipped to the map's rounded rect
     const cr = big ? T.bigClipRadius : T.clipRadius;
     g.save();
     g.beginPath(); g.roundRect ? g.roundRect(pad, pad, mapW, mapH, cr) : g.rect(pad, pad, mapW, mapH); g.clip();
-    g.drawImage(layerFor(e, Math.round(mapW * dpr), Math.round(mapH * dpr), dpr), pad, pad, mapW, mapH);
-    if (T.showView && data.view) {
+    g.drawImage(layerFor(e, mapW, mapH, dpr), pad, pad, mapW, mapH);
+    if (cfg.screenBox && data.view) {
       const vw = Math.min(mapW, data.view.w * k), vh = Math.min(mapH, data.view.h * k);
       let [vx, vy] = toMap(data.view.x, data.view.y);
       vx = Math.max(pad, Math.min(pad + mapW - vw, vx)); vy = Math.max(pad, Math.min(pad + mapH - vh, vy));
@@ -512,7 +533,7 @@
     const crowd = !big && dots.length > T.crowdAbove;
     const baseR = big ? T.bigDotRadius : crowd ? T.crowdRadius : T.dotRadius;
     const teamCol = T.dot[myTeamKind(data)] || T.dot.neutral;
-    const showLabels = big || T.labels;
+    const showLabels = longest >= T.labelsFrom;
     const labels = [];
     for (const p of dots) {
       const [x, y] = toMap(p.x, p.y);
@@ -547,70 +568,42 @@
     }
   };
 
-  // strip under the small map / header of the big map: only touch the DOM when the text changes
-  let stripKey = '', headKey = '';
-  const countsHtml = (data, big) => {
-    const s = big ? 8 : 7;
-    if (data.phase !== 'game' || !data.snowy) {
-      const n = data.players.length;
-      return `<span style="display:flex;align-items:center;gap:${big ? 5 : 4}px">${swatch(T.dot.neutral, s)}${n} ${data.phase !== 'game' ? 'in lobby' : 'players'}</span>`;
-    }
-    const z = data.counts.zombie, h = data.counts.human;
-    return `<span style="display:flex;align-items:center;gap:${big ? 5 : 4}px">${swatch(T.dot.zombie, s)}${z}${big ? ' cursed' : ''}</span>` +
-      `<span style="display:flex;align-items:center;gap:${big ? 5 : 4}px">${swatch(T.dot.human, s)}${h}${big ? (h === 1 ? ' human' : ' humans') : ''}</span>`;
-  };
-  const updateStrip = data => {
+  // strip: counts (+ "You're cursed" / "Waiting for host"); only touch the DOM when the text changes
+  let stripKey = '';
+  const updateStrip = (data, wide) => {
     const lobby = data.phase !== 'game';
     const cursed = !lobby && data.snowy && myTeamKind(data) === 'zombie';
-    const right = lobby ? '<span style="margin-left:auto;color:#8b90a0">Waiting for host</span>'
-      : cursed ? '<span style="margin-left:auto;font:700 9px/14px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#12141a;background:#c353ff;border-radius:3px;padding:0 5px">You\'re cursed</span>'
-      : `<span style="margin-left:auto;display:flex;align-items:center;gap:4px;color:#8b90a0">${chip(false)}big map</span>`;
-    const html = countsHtml(data, false) + right;
-    if (html !== stripKey) { mmStrip.innerHTML = html; stripKey = html; }
-  };
-  const updateHead = data => {
-    const html = `<span style="font:700 13px/18px system-ui,sans-serif;color:#f4f5f8">Map</span>` + countsHtml(data, true) +
-      `<span style="margin-left:auto;display:flex;align-items:center;gap:6px;color:#8b90a0">${chip(false).replace('9px/12px', '10px/14px').replace('padding:0 4px', 'padding:0 5px')}close</span>`;
-    if (html !== headKey) { mmHead.innerHTML = html; headKey = html; }
-    const tc = T.dot[myTeamKind(data)] || T.dot.neutral;
-    legendYou.style.background = T.dot.me; legendYou.style.boxShadow = `0 0 0 1.5px #fff, 0 0 0 3px ${tc}`;
-  };
-
-  const placeCorner = (el, corner) => {
-    const [v, h] = corner.split('-');
-    el.style.top = el.style.bottom = el.style.left = el.style.right = '';
-    el.style[v] = T.margin + 'px'; el.style[h] = T.margin + 'px';
+    let html;
+    if (lobby || !data.snowy) html = `<span style="display:flex;align-items:center;gap:4px">${swatch(T.dot.neutral)}${data.players.length} ${lobby ? 'in lobby' : 'players'}</span>` +
+      (lobby && wide ? '<span style="color:#8b90a0">Waiting for host</span>' : '');
+    else html = `<span style="display:flex;align-items:center;gap:4px">${swatch(T.dot.zombie)}${data.counts.zombie}${wide ? ' cursed' : ''}</span>` +
+      `<span style="display:flex;align-items:center;gap:4px">${swatch(T.dot.human)}${data.counts.human}${wide ? (data.counts.human === 1 ? ' human' : ' humans') : ''}</span>` +
+      (cursed ? '<span style="font:700 9px/14px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#12141a;background:#c353ff;border-radius:3px;padding:0 5px">You\'re cursed</span>' : '');
+    if (html !== stripKey) { mmInfo.innerHTML = html; stripKey = html; }
   };
 
   const mmDraw = () => {
-    const showBig = !cfg.hidden && cfg.mapBig, showSmall = !cfg.hidden && cfg.minimap && !cfg.mapBig;
-    const data = (showBig || showSmall) ? minimapData() : null;
-    if (!data) { mmSmall.style.display = mmBig.style.display = mmDim.style.display = 'none'; return; }
-    const e = data.extent;
-    if (showSmall) {
-      const k = T.size / Math.max(e.w, e.h), mapW = Math.round(e.w * k), mapH = Math.round(e.h * k), pad = T.framePad;
-      Object.assign(mmSmall.style, { display: 'block', width: mapW + pad * 2 + 2 + 'px', padding: pad + 'px', background: T.frame,
-        border: '1px solid ' + T.frameBorder, borderRadius: T.radius + 'px', boxShadow: T.shadow, opacity: T.opacity });
-      placeCorner(mmSmall, T.corner);
-      mmSmallBox.style.width = mapW + 'px'; mmSmallBox.style.height = mapH + 'px';
-      drawMap(mmSmallCv, data, mapW, mapH, pad, false);
-      updateStrip(data);
-    } else mmSmall.style.display = 'none';
-    if (showBig) {
-      // fit: longest side ≤ bigSize, inside the space right of the mod panel, whole frame on screen
-      const chromeW = 12 * 2 + 2, chromeH = 10 + 12 + 2 + 18 + 9 + 9 + 14;
-      let left0 = T.bigLeft; if (innerWidth - left0 - T.margin - chromeW < 320) left0 = T.margin;   // tiny window: overlap the panel
-      const availW = innerWidth - left0 - T.margin - chromeW, availH = innerHeight - T.margin * 2 - chromeH;
-      const k = Math.max(0.01, Math.min(T.bigSize / Math.max(e.w, e.h), availW / e.w, availH / e.h));
-      const mapW = Math.round(e.w * k), mapH = Math.round(e.h * k);
-      const fw = mapW + chromeW, fh = mapH + chromeH;
-      mmDim.style.display = 'block'; mmDim.style.background = T.dim;
-      Object.assign(mmBig.style, { display: 'flex', width: fw + 'px', background: T.bigFrame, border: '1px solid ' + T.frameBorder,
-        boxShadow: T.bigShadow, left: Math.round(left0 + (innerWidth - left0 - T.margin - fw) / 2) + 'px', top: Math.max(T.margin, Math.round((innerHeight - fh) / 2)) + 'px' });
-      mmBigBox.style.width = mapW + 'px'; mmBigBox.style.height = mapH + 'px';
-      drawMap(mmBigCv, data, mapW, mapH, 10, true);
-      updateHead(data);
-    } else { mmBig.style.display = 'none'; mmDim.style.display = 'none'; }
+    const data = !cfg.hidden && cfg.minimap ? minimapData() : null;
+    if (!data) { mmFrame.style.display = 'none'; return; }
+    const e = data.extent, pad = T.framePad;
+    // never bigger than the window
+    const fitK = Math.min((innerWidth - T.margin * 2 - pad * 2 - 2) / e.w, (innerHeight - T.margin * 2 - pad * 2 - 2 - 19) / e.h);
+    const k = Math.max(0.005, Math.min(mapSize / Math.max(e.w, e.h), fitK));
+    const mapW = Math.round(e.w * k), mapH = Math.round(e.h * k);
+    const fw = mapW + pad * 2 + 2, fh = mapH + pad * 2 + 2 + 19;
+    if (!pos) {   // first show: start in the configured corner
+      const [v, h] = T.corner.split('-');
+      pos = { x: h === 'left' ? T.margin : innerWidth - T.margin - fw, y: v === 'top' ? T.margin : innerHeight - T.margin - fh };
+    }
+    if (anchor) pos = { x: anchor.right - fw, y: anchor.bottom - fh };
+    // keep fully on screen (window resized, map grew, or a saved spot from a bigger screen)
+    pos.x = Math.max(0, Math.min(innerWidth - fw, pos.x)); pos.y = Math.max(0, Math.min(innerHeight - fh, pos.y));
+    Object.assign(mmFrame.style, { display: 'block', left: pos.x + 'px', top: pos.y + 'px', width: fw + 'px', padding: pad + 'px',
+      background: T.frame, border: '1px solid ' + T.frameBorder, borderRadius: T.radius + 'px', boxShadow: T.shadow, opacity: T.opacity });
+    mmBox.style.width = mapW + 'px'; mmBox.style.height = mapH + 'px';
+    if (+mmSlider.value !== mapSize) mmSlider.value = mapSize;
+    drawMap(mmCv, data, mapW, mapH, pad);
+    updateStrip(data, mapW >= 320);
   };
   let mmT = 0;
   const mmLoop = () => { try { mmDraw(); } catch {} mmT = requestAnimationFrame(mmLoop); };
@@ -755,17 +748,9 @@
   };
   group('ESP', [['🧟 Cursed', 'cursed'], ['🏃 Humans', 'humans']]);
   group('Draw', [['Boxes', 'boxes'], ['Tracers', 'tracers'], ['Names', 'names'], ['Health', 'health'], ['List', 'list']]);
-  group('Map', [['🗺 Minimap', 'minimap'], ['Big map', 'mapBig']]);
-  const mapChip = document.createElement('span');
-  boxes.mapBig.parentElement.appendChild(mapChip);
-  const syncMapRow = () => {
-    mapChip.style.cssText = `font:700 9px/12px system-ui,sans-serif;border-radius:3px;padding:0 4px;${cfg.mapBig ? 'color:#12141a;background:#c353ff;border:1px solid #c353ff' : 'color:#d6d9e0;border:1px solid #3a3f4b'}`;
-    mapChip.textContent = 'M';
-    boxes.mapBig.checked = cfg.mapBig;
-    boxes.minimap.parentElement.style.color = cfg.minimap ? '' : '#8b90a0';
-  };
-  syncMapRow();
-  boxes.minimap.addEventListener('change', syncMapRow); boxes.mapBig.addEventListener('change', syncMapRow);
+  group('Map', [['🗺 Minimap', 'minimap'], ['Screen box', 'screenBox']]);
+  const syncMapRow = () => { boxes.minimap.parentElement.style.color = cfg.minimap ? '' : '#8b90a0'; };
+  syncMapRow(); boxes.minimap.addEventListener('change', syncMapRow);
   group('Answers', [['Highlight', 'highlight'], ['Auto-answer', 'autoAnswer']]);
   group('Fun (only you see it)', [['🌀 Spin', 'spin'], ['🟢 Shrek', 'shrek'], ['Everyone is Shrek', 'shrekAll']]);
   const funRow = document.createElement('div'); funRow.style.cssText = 'display:flex;gap:6px;margin:2px 0 4px';
@@ -812,10 +797,8 @@
   };
   refresh(); const rt = setInterval(refresh, 400); cleanups.push(() => clearInterval(rt));
 
-  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
   const onKey = e => {
     if (e.key === 'Insert') { cfg.hidden = !cfg.hidden; panel.style.opacity = cfg.hidden ? .4 : 1; }
-    else if ((e.key === 'm' || e.key === 'M') && !typing(e) && !e.ctrlKey && !e.altKey && !e.metaKey) { cfg.mapBig = !cfg.mapBig; syncMapRow(); }
   };
   addEventListener('keydown', onKey); cleanups.push(() => removeEventListener('keydown', onKey));
 
