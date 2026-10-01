@@ -27,6 +27,24 @@ and fall back to "—" if absent). Then `myRole()`, `balanceVal()`, roster count
 > `joinDetails.roomId`), plus the game code from the URL. The socket is captured on the next
 > outgoing frame / engine.io ping (≤~25s) if the inject lands on a totally idle screen.
 
+### Phase-aware display  *(driven by `imposter.status`)*
+The header adapts to the game phase. Confirmed status values: **`intro`** = waiting room (pre-liftoff),
+**`questions`** = in game. Others exist for meeting/voting/results — map them as seen (the tool already
+re-requests the roster on every status change).
+
+| Field | Waiting room (`intro`) | In game (`questions`+) | Eliminated | Game over |
+|---|---|---|---|---|
+| Status label | "Waiting to start" | "Connected / In game" | "👻 Eliminated" | "Game over — <winner>" |
+| Game code (URL) | ✅ | ✅ | ✅ | ✅ |
+| Your name (`user.name`) | ✅ | ✅ | ✅ | ✅ |
+| Players count | ❌ host-only pre-start — show "—" | ✅ roster total **and** alive (exclude `votedOff`) | ✅ | ✅ |
+| Your role | ❌ not assigned — "revealed at liftoff" | ✅ | ✅ | ✅ |
+| Energy / investigations / meetings left | ❌ not set | ✅ | ✅ (energy only) | — |
+| Roster + Actions tabs | roster empty ("waiting…"), actions disabled | full | donate-only | frozen |
+
+Player count has **no player-side source** (`gameValues.players` is empty on a player in both phases,
+`gameValues.gameCode` is null) — derive it from the roster once in game; show "—" in the lobby.
+
 ## Tabs: Roles · Actions · Answers · Log · Settings
 
 ### 1. Roles  *(reveal — default tab)*
@@ -101,6 +119,27 @@ position, danger-actions acknowledgement. Mirrors STAX's lightweight settings.
 - **Do-once** calls (thin wrappers over `purchase()`), separate from the Auto toggles.
 - Parameterize the auto-answer interval (speed control); drop the F8 keybind.
 - Render the full both-role catalog (static table above) and grey rows not in live `shopItems()`.
+
+## Edge cases the hub must handle
+- **Wrong page / not in a TNO game:** show "not in a Trust No One game" instead of an empty panel.
+- **Socket not captured yet (idle inject):** show "connecting…"; it resolves on the next outgoing
+  frame / ping (≤~25s). Don't render stale/empty roster as if final.
+- **Lobby (`intro`):** no roles, no counts, no player count — show "waiting", disable Actions/Answers
+  that need a live game, and reveal them at liftoff (re-request roster on the status change — already wired).
+- **Join-in-late:** roster/roles resolve normally once you're in and assigned.
+- **Duplicate player names:** self (`(you)`) resolves by id from `IMPOSTER_MODE_PERSON`; the name-match
+  fallback only fires when the name is unique — otherwise leave "(you)" unmarked rather than guess.
+- **Host leaves / game ends / "All done":** show "game ended" and freeze actions (socket closes).
+- **Target leaves or is ejected mid-run:** auto-reset target to "nobody"; pause targeted autos + warn.
+- **Reconnect / refresh:** tool re-bootstraps and re-captures the socket; panel state (tab/pos) persists.
+- **Reduced-player games:** impostor count can clamp — always display the real count from the roster,
+  never the configured setting.
+- **Meeting / voting phase:** non-vote actions may be rejected server-side; gate or warn, and this is
+  where Auto-vote applies.
+- **Everything is server-authoritative on energy:** greyed/under-funded actions are also dropped by the
+  server, so the client gate is courtesy — never assume a fired action succeeded; reflect the result
+  from the incoming frame (Log tab).
+- **Game code absent from URL** (opened some other way): fall back to "—".
 
 ## What stays as-is
 `tno-reveal.js` is unchanged for now (verified). Gimkit stays a code stash — no install page /
