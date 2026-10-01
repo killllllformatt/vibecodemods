@@ -219,6 +219,19 @@ driven by `shopItems()` (it already is), so Auto never fires a meeting the teach
 - **Your stats** card from `stats()`: `✓ correct · ✗ incorrect · total · accuracy% · 🔥 streak`.
   ✅ Verified 10/0/10/100%/10 after 10 s of auto-answer.
 
+**Possible upgrade: answer by frame instead of by click** (from the public GimkitCheat; **not yet
+verified by us**). At liftoff the server sends `STATE_UPDATE GAME_QUESTIONS` (every question, with
+`answers[].correct` and `_id`) and `PLAYER_QUESTION_LIST` / `PLAYER_QUESTION_LIST_INDEX` (your
+question order and position). Auto-answer could send `QUESTION_ANSWERED {answer:<answerId>, questionId}`
+directly, which is faster and survives Gimkit UI changes. Edge cases before switching:
+- **UI desync:** questions advance client-side (Continue makes no frame). A frame-only answer may leave
+  the on-screen question behind the server's count. Check whether the UI follows; if not, keep the
+  click path for the visible question and use the frame path only when the panel is minimized.
+- **Text-answer questions** (`type !== 'mc'`): send `answers[0].text`, not an id.
+- **Mid-game inject:** `GAME_QUESTIONS` is sent at liftoff and would be missed. Fall back to the click
+  path (`currentQuestion()`), which works at any time.
+- Keep the jittered speed control for both paths.
+
 ### 6.4 Log
 Newest-first feed, capped (~100 entries). Each entry gets a time and an icon. Sources are incoming
 frames the script already decodes. Add a small `R.log` ring buffer in `onFrame`:
@@ -257,6 +270,24 @@ and Answers the first time, like STAX).
 | Under-funded / invalid purchase | server drops it silently | Never assume success; confirm through balance change (§6.4) |
 | Tied vote | not verified (one attempt ejected someone, but a vote may not have landed) | Don't predict outcomes; just read the roster afterwards |
 
+### 7.1 Other cheat scripts and Gimkit anti-cheat
+
+Students often already have a public Gimkit cheat installed. Two were reviewed on 2026-10-01: **Gimkit
+Cheat** by TheLazySquid (GitHub, Svelte, v1.2.2) and **"gimkit cheats (MOD MENU)"** (Greasyfork #526022,
+v0.3.7, a reupload of an older GimkitCheat). Both are Tampermonkey userscripts that run at
+`document-start` on `gimkit.com/join*`, so they're **already loaded before our hub runs**. Their own
+Trust No One feature is a passive impostor-name list that only works if loaded before joining. Ours
+replaces it.
+
+| Situation | What happens | Hub behaviour |
+|---|---|---|
+| **MOD MENU (#526022) installed** | Its "antifreeze" makes `WebSocket.prototype.send` a **non-configurable getter that always returns the native send**. Our late `WebSocket.prototype.send = …` patch is **silently ignored** in sloppy mode, and **throws a TypeError in strict mode**. ES modules and most bundler output are strict, and the throw would kill the whole script. | Wrap the send patch in `try/catch` and check afterwards that it took (`WebSocket.prototype.send === ourFn`). If it didn't, carry on **incoming-only**: the `MessageEvent.data` hook still catches the socket and room on the next server frame, and sending still works, because `R.ws.send` resolves to the native function. Expect "Connecting…" to last until the first incoming frame instead of the next ping. |
+| **Gimkit freezes `WebSocket` again** (it once did this as anti-cheat; both public scripts carry a workaround) | `Object.freeze(WebSocket)` blocks changes to the constructor. The prototype may or may not be frozen too. | Same defence as above: try/catch plus a "did it take" check, then fall back to the `MessageEvent` hook (on `MessageEvent.prototype`, not touched by a WebSocket freeze). If even that fails (`Object.isFrozen(MessageEvent.prototype)`), show "Gimkit blocked the hook: reload and run the hub before joining". |
+| **Another hub is also running** | Two overlays. Both may auto-answer, which can double-submit or race on the same question (server reaction **not verified**). | Best-effort detection: GimkitCheat sets `window.stores` (an object with `.assignment`); MOD MENU replaces `Object.freeze` (its `toString()` lacks `[native code]`) and leaves `WebSocket.prototype.send` non-configurable. If either is found, show a one-time banner: "Another Gimkit cheat is running; turn off its auto-answer so answers aren't sent twice." Never touch or disable the other script. |
+| **Our own script injected twice** (bookmarklet clicked again, or userscript + bookmarklet) | `if (window.__tnoReveal) return` stops the second copy | Second click toggles the panel (STAX behaviour), and never creates a second engine or a second set of hooks. |
+| **Hub shipped as a `document-start` userscript** | Runs before `<body>` and before the game's socket exists. Nothing is lost: the MessageEvent hook catches the socket when it opens, and joining from the start means `IMPOSTER_MODE_PERSON` arrives directly. | Defer panel mounting until `DOMContentLoaded`. Don't search React/MobX until the game screen exists (keep the existing retry loop). |
+| **Page already in game when a pre-join-only script expects the lobby** | GimkitCheat alerts "can only be run before you join" (it checks for the amplitude script). | Our hub must **not** have this restriction: mid-game injection is supported (`requestPeople`). Don't copy that check. |
+
 ---
 
 ## 8. Delivery: how this gets onto the page
@@ -280,6 +311,9 @@ works through `requestPeople`.
 - Tie-vote outcome.
 - Full list of `SUCCESS_MODAL_INFO` shapes (only investigation and Note Look seen).
 - Whether `ACTIVITY_FEED_MESSAGE` / `NOTIFICATION` appear in TNO (not seen in 3 games).
+- Frame-based answering (§6.3): does the on-screen question follow a `QUESTION_ANSWERED` sent without a click?
+- How the server reacts to two scripts answering the same question (§7.1).
+- Whether Gimkit currently freezes `WebSocket` / `WebSocket.prototype` at all (both public scripts still carry the workaround).
 
 ## 10. Reference
 - Logic: [`tno-reveal.js`](tno-reveal.js) (`window.__tnoReveal`, §3)
