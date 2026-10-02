@@ -14,6 +14,8 @@
 //   humans in different colours. Drag it anywhere; slider = size (names appear when it's big). Optional
 //   box showing your screen. Look by Claude Design (Minimap.dc.html), knobs in __snowy.minimap.theme;
 //   raw data for a custom UI = __snowy.api.minimap().
+// - Aimbot (when cursed): every throw goes to the target, led for movement; Auto-fire throws by itself
+//   whenever someone is in range with no wall in the way.
 // - Fun (client-side only — nobody else sees it): spinbot, Shrek skin (you or everyone), or any
 //   image you pick as your skin.
 // Insert = hide/show panel. Click the bookmarklet again to remove everything.
@@ -65,7 +67,7 @@
   const isSnowy = () => { try { return /\/modes\/snowInfection\//.test(JSON.parse(room().state.mapSettings).musicUrl || ''); } catch { return false; } };
 
   // ---- config + colors ----
-  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, screenBox: false, hidden: false };
+  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, screenBox: false, aimbot: false, autoFire: false, aimLeadMs: 0, hidden: false };
   const COL = { zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#666' };
 
   // team "2" = cursed, "1" = human in snowInfection. Lobby / other modes / unassigned → neutral.
@@ -148,6 +150,7 @@
         ctx.fillStyle = color; ctx.fillText(label, c.x, top - 12);
       }
     }
+    drawAim(w2s);
   };
   // Draw right after Phaser renders each frame, so camera and sprite positions are the ones on screen
   // (a separate rAF can run before the game's update and draw a frame behind → lines wobble).
@@ -610,6 +613,185 @@
   mmT = requestAnimationFrame(mmLoop);
   cleanups.push(() => cancelAnimationFrame(mmT));
 
+  // ---- aimbot ----
+  // Throwing = one client message FIRE {angle, x, y}; the angle is chosen by the client (from your
+  // character's centre toward the mouse) and the server just simulates the snowball from there. So:
+  //   - Aimbot: rewrite the angle of every FIRE you send (and AIMING, so your launcher visibly points
+  //     at the target) to hit the chosen target — click anywhere.
+  //   - Auto-fire: call the game's own fire() at the target, which keeps every client rule (held
+  //     launcher, ammo, cooldown) and simply does nothing until the cooldown has passed.
+  // Prediction: targets are read from the server state (≈150 ms ahead of the drawn sprites), their
+  // velocity from recent server updates, and the throw is led so snowball and player meet.
+  // Snowball numbers measured live: ~1000 px range, ~670 px/s, spawns ~95 px from your centre,
+  // centre = 20 px above the physics body. Range/speed are re-learned from your own throws.
+  const AIM = { centerUp: 20, startDist: 95, speed: 670, range: 1000, hitRadius: 35 };   // hitRadius: the server stops snowballs ~30px from a fence
+  const aim = { target: null, point: null, angle: null, shots: 0, hits: 0, mine: new Set(), why: '' };
+  const tracks = new Map();   // id -> [{t,x,y}] recent server positions
+  const sampleTracks = r => {
+    const now = performance.now();
+    r.state.characters.forEach((c, id) => {
+      let a = tracks.get(id); if (!a) tracks.set(id, a = []);
+      const l = a[a.length - 1];
+      if (!l || l.x !== c.x || l.y !== c.y) a.push({ t: now, x: c.x, y: c.y });
+      while (a.length > 2 && now - a[0].t > 600) a.shift();
+    });
+  };
+  // Server updates arrive every ~83 ms with noisy steps, so average over a window. `win` in ms.
+  const velocityOf = (id, win = 300) => {
+    const a = tracks.get(id), now = performance.now();
+    if (!a || a.length < 2 || now - a[a.length - 1].t > 250) return { x: 0, y: 0 };   // no recent update = standing still
+    const l = a[a.length - 1]; let f = a[0];
+    for (const s of a) if (l.t - s.t <= win) { f = s; break; }
+    if (f === l) f = a[a.length - 2];
+    const dt = (l.t - f.t) / 1000;
+    return dt < 0.05 ? { x: 0, y: 0 } : { x: (l.x - f.x) / dt, y: (l.y - f.y) / dt };
+  };
+  // Turning / stopping / starting = the lead will be wrong (measured: every miss in a zig-zag test was a
+  // throw during a direction change). Compare the last 150 ms with the last 450 ms.
+  const steady = id => {
+    const s = velocityOf(id, 150), l = velocityOf(id, 450), ss = Math.hypot(s.x, s.y), ls = Math.hypot(l.x, l.y);
+    if (ss < 40 && ls < 40) return true;                    // standing still
+    if (ss < 40 || ls < 40) return false;                   // just stopped or just started
+    const cos = (s.x * l.x + s.y * l.y) / (ss * ls);
+    return cos > 0.8 && ss / ls > 0.6 && ss / ls < 1.6;
+  };
+
+  // geometry for line of sight against the minimap's wall shapes
+  const segPt2 = (p, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+    let t = L ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t));
+    const x = a.x + t * dx - p.x, y = a.y + t * dy - p.y; return x * x + y * y;
+  };
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const segsCross = (a, b, c, d) => (cross(a, b, c) > 0) !== (cross(a, b, d) > 0) && (cross(c, d, a) > 0) !== (cross(c, d, b) > 0);
+  const segSeg = (a, b, c, d) => segsCross(a, b, c, d) ? 0 : Math.sqrt(Math.min(segPt2(a, c, d), segPt2(b, c, d), segPt2(c, a, b), segPt2(d, a, b)));
+  const inPoly = (p, P) => { let inside = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > p.y) !== (yj > p.y) && p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
+  const blocked = (A, B) => {
+    const pr = AIM.hitRadius, minX = Math.min(A.x, B.x) - 500, maxX = Math.max(A.x, B.x) + 500, minY = Math.min(A.y, B.y) - 500, maxY = Math.max(A.y, B.y) + 500;
+    for (const w of mm.walls) {
+      if (w.x < minX || w.x > maxX || w.y < minY || w.y > maxY) continue;
+      if (w.type === 'circle') { if (segPt2({ x: w.x, y: w.y }, A, B) < (w.r + pr) ** 2) return true; }
+      else if (w.type === 'capsule') { if (segSeg(A, B, { x: w.a[0], y: w.a[1] }, { x: w.b[0], y: w.b[1] }) < w.r + pr) return true; }
+      else {
+        const P = w.points.map(([x, y]) => ({ x, y }));
+        if (inPoly(A, w.points) || inPoly(B, w.points)) return true;
+        for (let i = 0; i < 4; i++) if (segSeg(A, B, P[i], P[(i + 1) % 4]) < pr) return true;
+      }
+    }
+    return false;
+  };
+
+  const heldWeapon = () => {
+    try {
+      const n = deref(store.me.inventory.activeInteractiveSlot); if (!n) return null;
+      const s = deref(store.me.inventory.interactiveSlots).get(String(n));
+      if (!s || !deref(s.itemId)) return null;
+      return { itemId: deref(s.itemId), clip: deref(s.currentClip), clipSize: deref(s.clipSize) };
+    } catch { return null; }
+  };
+  const myCentre = () => {
+    try { const me = [...scene.characterManager.characters.values()].find(c => c.isMain); return me ? { x: me.body.x, y: me.body.y - AIM.centerUp } : null; } catch { return null; }
+  };
+  const mouseWorld = () => { try { const p = scene.input.activePointer; return scene.cameras.main.getWorldPoint(p.x, p.y); } catch { return null; } };
+
+  // Lead the target: where will it be when the snowball arrives? (fixed-point iteration)
+  const intercept = (C, P, V) => {
+    const lag = (cfg.aimLeadMs || 0) / 1000;
+    let t = 0, pt = P;
+    for (let i = 0; i < 5; i++) {
+      pt = { x: P.x + V.x * (t + lag), y: P.y + V.y * (t + lag) };
+      t = Math.max(0, (Math.hypot(pt.x - C.x, pt.y - C.y) - AIM.startDist) / AIM.speed);
+    }
+    return pt;
+  };
+
+  // Pick the target each frame. Auto-fire: the nearest one you can hit. Otherwise: the one closest to
+  // the direction of your mouse, so you choose by pointing roughly at someone.
+  const aimTick = () => {
+    aim.target = aim.point = aim.angle = null;
+    if (!(cfg.aimbot || cfg.autoFire) || !store || !scene) { aim.why = ''; return; }
+    const r = room(); if (!r) return;
+    sampleTracks(r);
+    if (phase() !== 'game') { aim.why = 'waiting for the game'; return; }
+    const w = heldWeapon(); if (!w) { aim.why = 'hold your launcher'; return; }
+    if (!refreshStatic()) return;
+    const C = myCentre(); if (!C) return;
+    const mine = myId(); let myTeam = null; try { myTeam = deref(r.state.characters.get(mine).teamId); } catch {}
+    const mouse = mouseWorld(), mouseAng = mouse ? Math.atan2(mouse.y - C.y, mouse.x - C.x) : 0;
+    let best = null, bestScore = Infinity, anyInRange = false;
+    r.state.characters.forEach((c, id) => {
+      if (id === mine || c.type === 'sentry' || c.isActive === false) return;
+      const h = c.health || {};
+      if (deref(h.lives) === 0 || deref(h.spawnImmunityActive) || deref(c.teamId) === myTeam) return;
+      const pt = intercept(C, { x: c.x, y: c.y - AIM.centerUp }, velocityOf(id));
+      const d = Math.hypot(pt.x - C.x, pt.y - C.y);
+      if (d - AIM.startDist > AIM.range * 0.97) return;
+      anyInRange = true;
+      const ang = Math.atan2(pt.y - C.y, pt.x - C.x);
+      // from your centre, not the spawn point: the server drops a throw whose spawn point is behind a wall
+      if (blocked(C, pt)) return;
+      let score = d;
+      if (!cfg.autoFire && mouse) { let da = Math.abs(ang - mouseAng) % (2 * Math.PI); if (da > Math.PI) da = 2 * Math.PI - da; score = da; }
+      if (score < bestScore) { bestScore = score; best = { id, pt, ang, name: c.name, steady: steady(id) }; }
+    });
+    if (!best) { aim.why = anyInRange ? 'no clear shot' : 'nobody in range'; return; }
+    aim.target = best.id; aim.point = best.pt; aim.angle = best.ang; aim.why = '→ ' + best.name;
+    if (!best.steady) aim.why += ' (turning)';
+    // auto-fire waits out direction changes: snowballs are scarce (you only earn them by answering)
+    if (cfg.autoFire && best.steady && w.clip > 0 && deref(store.me.currentAction) !== 'deviceUI') {
+      try { scene.worldManager.projectiles.fire({ worldX: best.pt.x, worldY: best.pt.y }, false); } catch {}
+    }
+  };
+  let aimRaf = 0;
+  const aimLoop = () => { try { aimTick(); } catch {} aimRaf = requestAnimationFrame(aimLoop); };
+  aimRaf = requestAnimationFrame(aimLoop);
+  cleanups.push(() => cancelAnimationFrame(aimRaf));
+
+  // Outgoing hook (installed once the room is known; removed on destroy): retarget FIRE + AIMING.
+  let hookedRoom = null, origSend = null, offProj = null;
+  const installAimHook = () => {
+    const r = room(); if (!r || r === hookedRoom) return;
+    if (hookedRoom && origSend) hookedRoom.send = origSend;
+    if (offProj) { try { offProj(); } catch {} offProj = null; }
+    hookedRoom = r; origSend = r.send;
+    r.send = function (type, payload, ...rest) {
+      try {
+        if ((type === 'FIRE' || type === 'AIMING') && cfg.aimbot && aim.angle != null && payload && typeof payload === 'object') payload = { ...payload, angle: aim.angle };
+        if (type === 'FIRE') aim.shots++;
+      } catch {}
+      return origSend.call(this, type, payload, ...rest);
+    };
+    // own snowballs: learn range/speed, count hits
+    try {
+      offProj = r.onMessage('PROJECTILE_CHANGES', d => {
+        try {
+          for (const p of d.added || []) {
+            if (p.ownerId !== myId()) continue;
+            aim.mine.add(p.id); if (aim.mine.size > 200) aim.mine.delete(aim.mine.values().next().value);
+            const range = Math.hypot(p.end.x - p.start.x, p.end.y - p.start.y) * 100, dur = (p.endTime - p.startTime) / 1000;
+            if (range > 100 && dur > 0.1) { AIM.range = range; AIM.speed = range / dur; }
+          }
+          // hit = {id, x, y, hits:[{characterId, damage}]} (no characterId = it hit a wall)
+          for (const h of d.hit || []) if (h && aim.mine.has(h.id) && (h.hits || []).some(x => x.characterId && x.characterId !== myId())) aim.hits++;
+        } catch {}
+      });
+    } catch {}
+  };
+  const aimHookT = setInterval(() => { try { installAimHook(); } catch {} }, 500);
+  cleanups.push(() => { clearInterval(aimHookT); if (hookedRoom && origSend) hookedRoom.send = origSend; if (offProj) try { offProj(); } catch {} });
+
+  // drawn by the ESP overlay: ring on the target, small cross on the lead point
+  const drawAim = w2s => {
+    if (!aim.target || !aim.point) return;
+    try {
+      const ch = scene.characterManager.characters.get(aim.target);
+      const lead = w2s(aim.point.x, aim.point.y);
+      ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 2;
+      if (ch) { const c = w2s(ch.body.x, ch.body.y - AIM.centerUp); ctx.beginPath(); ctx.arc(c.x, c.y, 34, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(lead.x, lead.y); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.beginPath(); ctx.moveTo(lead.x - 7, lead.y); ctx.lineTo(lead.x + 7, lead.y); ctx.moveTo(lead.x, lead.y - 7); ctx.lineTo(lead.x, lead.y + 7); ctx.stroke();
+    } catch {}
+  };
+
   // ---- questions ----
   // Question devices: gimkitLiveQuestion. The main one gives the per-role reward (+energy as a human,
   // +snowballs once cursed) and has no fixed "correct" text; side ones (e.g. "+1 Bait") do.
@@ -751,6 +933,8 @@
   group('Map', [['🗺 Minimap', 'minimap'], ['Screen box', 'screenBox']]);
   const syncMapRow = () => { boxes.minimap.parentElement.style.color = cfg.minimap ? '' : '#8b90a0'; };
   syncMapRow(); boxes.minimap.addEventListener('change', syncMapRow);
+  group('Aim (when cursed)', [['🎯 Aimbot', 'aimbot'], ['Auto-fire', 'autoFire']]);
+  const aimStat = document.createElement('div'); aimStat.style.cssText = 'opacity:.7;margin:0 0 2px;display:none'; panel.appendChild(aimStat);
   group('Answers', [['Highlight', 'highlight'], ['Auto-answer', 'autoAnswer']]);
   group('Fun (only you see it)', [['🌀 Spin', 'spin'], ['🟢 Shrek', 'shrek'], ['Everyone is Shrek', 'shrekAll']]);
   const funRow = document.createElement('div'); funRow.style.cssText = 'display:flex;gap:6px;margin:2px 0 4px';
@@ -769,6 +953,8 @@
     const snowy = store ? isSnowy() : true;
     note.style.display = snowy ? 'none' : 'block';
     note.textContent = 'Not Snowy Survival: everyone is shown in neutral.';
+    aimStat.style.display = cfg.aimbot || cfg.autoFire ? 'block' : 'none';
+    aimStat.textContent = `🎯 ${aim.why || '…'} · ${aim.shots} thrown${aim.hits ? ', ' + aim.hits + ' hit' : ''}`;
     const s = myStats(); stat.textContent = `✓ ${s.correct}  ✗ ${s.incorrect}${cfg.autoAnswer ? (ans.paused ? '  · auto paused (question open)' : '  · auto-answer on') : ''}`;
     let zombies = 0, humans = 0;
     const rows = [];
@@ -806,7 +992,7 @@
     cfg, ans,
     minimap: { theme: mmTheme, data: () => minimapData() },
     get scene() { return scene; }, get store() { return store; },
-    api: { phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures, minimap: () => minimapData() },
+    api: { aim: () => ({ ...aim, AIM }), phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures, minimap: () => minimapData() },
     destroy() { cleanups.forEach(f => { try { f(); } catch {} }); canvas.remove(); panel.remove(); delete window.__snowy; },
   };
 })();

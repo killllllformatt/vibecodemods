@@ -10,7 +10,7 @@ merged into one mode-detecting menu eventually, built from this code.
 | Mode | File | What it does |
 | --- | --- | --- |
 | Trust No One | [`trust-no-one/tno-reveal.js`](trust-no-one/tno-reveal.js) | Reveals every player's real role (impostor vs detective), highlights the correct answer, optional F8 auto-answer, and auto-runs Mission Control actions (investigate / note look / meeting / impostor sabotage / donate) on a chosen target when you can afford them. |
-| Snowy Survival | [`snowy-survival/snowy.js`](snowy-survival/snowy.js) | Separate cursed / human ESP (boxes, tracers, names, health; neutral colour in the lobby), live roster, correct-answer highlight (only while the question screen is open), auto-answer that never opens the question screen, and a minimap (whole arena, walls, everyone as team-coloured dots, M = big map; design brief: [`MINIMAP-DESIGN-BRIEF.md`](snowy-survival/MINIMAP-DESIGN-BRIEF.md)). |
+| Snowy Survival | [`snowy-survival/snowy.js`](snowy-survival/snowy.js) | Separate cursed / human ESP (boxes, tracers, names, health; neutral colour in the lobby), live roster, correct-answer highlight (only while the question screen is open), auto-answer that never opens the question screen, an aimbot for when you're cursed (every throw redirected to a led target; optional auto-fire that waits out direction changes), and a draggable, resizable minimap (whole arena, walls, everyone as team-coloured dots; design brief: [`MINIMAP-DESIGN-BRIEF.md`](snowy-survival/MINIMAP-DESIGN-BRIEF.md)). |
 
 Each file is a self-contained IIFE. To run: paste it inline into the page console (the live site's
 CSP blocks loading from `127.0.0.1`, so inline is the reliable path). Both toggle their panel with
