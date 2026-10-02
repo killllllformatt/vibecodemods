@@ -16,6 +16,8 @@
 //   raw data for a custom UI = __snowy.api.minimap().
 // - Aimbot (when cursed): every throw goes to the target, led for movement; Auto-fire throws by itself
 //   whenever someone is in range with no wall in the way.
+//   Rapid fire = hold the mouse to throw every 160 ms (the launcher normally needs a click per throw).
+//   ♾ Ammo = when you're low on snowballs, answer questions at full speed in the background.
 // - Fun (client-side only — nobody else sees it): spinbot, Shrek skin (you or everyone), or any
 //   image you pick as your skin.
 // Insert = hide/show panel. Click the bookmarklet again to remove everything.
@@ -67,7 +69,7 @@
   const isSnowy = () => { try { return /\/modes\/snowInfection\//.test(JSON.parse(room().state.mapSettings).musicUrl || ''); } catch { return false; } };
 
   // ---- config + colors ----
-  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, screenBox: false, aimbot: false, autoFire: false, aimLeadMs: 0, hidden: false };
+  const cfg = { cursed: true, humans: true, boxes: true, tracers: true, names: true, health: true, list: true, highlight: true, autoAnswer: false, spin: false, shrek: false, shrekAll: false, minimap: true, screenBox: false, aimbot: false, autoFire: false, aimLeadMs: 0, aimWaitTurns: false, rapidFire: false, ammoRefill: false, hidden: false };
   const COL = { zombie: '#c353ff', human: '#39d353', neutral: '#f4c430', dead: '#666' };
 
   // team "2" = cursed, "1" = human in snowInfection. Lobby / other modes / unassigned → neutral.
@@ -624,7 +626,9 @@
   // velocity from recent server updates, and the throw is led so snowball and player meet.
   // Snowball numbers measured live: ~1000 px range, ~670 px/s, spawns ~95 px from your centre,
   // centre = 20 px above the physics body. Range/speed are re-learned from your own throws.
-  const AIM = { centerUp: 20, startDist: 95, speed: 670, range: 1000, hitRadius: 35 };   // hitRadius: the server stops snowballs ~30px from a fence
+  const AIM = { centerUp: 20, startDist: 95, speed: 670, range: 1000, hitRadius: 22, fenceExtra: 12 };
+  // hitRadius = snowball radius (0.225 units). Measured: throws skimming an ice barrier hit; a fence stopped
+  // one ~30px out (fences block a bit more than their walking outline), hence fenceExtra.
   const aim = { target: null, point: null, angle: null, shots: 0, hits: 0, mine: new Set(), why: '' };
   const tracks = new Map();   // id -> [{t,x,y}] recent server positions
   const sampleTracks = r => {
@@ -647,13 +651,14 @@
     return dt < 0.05 ? { x: 0, y: 0 } : { x: (l.x - f.x) / dt, y: (l.y - f.y) / dt };
   };
   // Turning / stopping / starting = the lead will be wrong (measured: every miss in a zig-zag test was a
-  // throw during a direction change). Compare the last 150 ms with the last 450 ms.
+  // throw during a direction change). Compare the last 250 ms with the last 600 ms; updates are noisy
+  // (single steps read 160–620 px/s for a 310 px/s walker), so only clear turns/stops count.
   const steady = id => {
-    const s = velocityOf(id, 150), l = velocityOf(id, 450), ss = Math.hypot(s.x, s.y), ls = Math.hypot(l.x, l.y);
-    if (ss < 40 && ls < 40) return true;                    // standing still
-    if (ss < 40 || ls < 40) return false;                   // just stopped or just started
+    const s = velocityOf(id, 250), l = velocityOf(id, 600), ss = Math.hypot(s.x, s.y), ls = Math.hypot(l.x, l.y);
+    if (ss < 60 && ls < 60) return true;                    // standing still
+    if (ss < 60 || ls < 60) return false;                   // just stopped or just started
     const cos = (s.x * l.x + s.y * l.y) / (ss * ls);
-    return cos > 0.8 && ss / ls > 0.6 && ss / ls < 1.6;
+    return cos > 0.5 && ss / ls > 0.4 && ss / ls < 2.5;
   };
 
   // geometry for line of sight against the minimap's wall shapes
@@ -666,27 +671,29 @@
   const segsCross = (a, b, c, d) => (cross(a, b, c) > 0) !== (cross(a, b, d) > 0) && (cross(c, d, a) > 0) !== (cross(c, d, b) > 0);
   const segSeg = (a, b, c, d) => segsCross(a, b, c, d) ? 0 : Math.sqrt(Math.min(segPt2(a, c, d), segPt2(b, c, d), segPt2(c, a, b), segPt2(d, a, b)));
   const inPoly = (p, P) => { let inside = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > p.y) !== (yj > p.y) && p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
-  const blocked = (A, B) => {
-    const pr = AIM.hitRadius, minX = Math.min(A.x, B.x) - 500, maxX = Math.max(A.x, B.x) + 500, minY = Math.min(A.y, B.y) - 500, maxY = Math.max(A.y, B.y) + 500;
+  const blocked = (A, B, pr0 = AIM.hitRadius) => {
+    const minX = Math.min(A.x, B.x) - 500, maxX = Math.max(A.x, B.x) + 500, minY = Math.min(A.y, B.y) - 500, maxY = Math.max(A.y, B.y) + 500;
     for (const w of mm.walls) {
       if (w.x < minX || w.x > maxX || w.y < minY || w.y > maxY) continue;
+      const pr = pr0 && propClass(w.propId) === 'fence' ? pr0 + AIM.fenceExtra : pr0;
       if (w.type === 'circle') { if (segPt2({ x: w.x, y: w.y }, A, B) < (w.r + pr) ** 2) return true; }
       else if (w.type === 'capsule') { if (segSeg(A, B, { x: w.a[0], y: w.a[1] }, { x: w.b[0], y: w.b[1] }) < w.r + pr) return true; }
       else {
         const P = w.points.map(([x, y]) => ({ x, y }));
         if (inPoly(A, w.points) || inPoly(B, w.points)) return true;
-        for (let i = 0; i < 4; i++) if (segSeg(A, B, P[i], P[(i + 1) % 4]) < pr) return true;
+        for (let i = 0; i < 4; i++) { const d = segSeg(A, B, P[i], P[(i + 1) % 4]); if (d === 0 || d < pr) return true; }
       }
     }
     return false;
   };
 
+  const reserveOf = itemId => { try { return deref(store.me.inventory.slots.get(itemId).amount) || 0; } catch { return 0; } };
   const heldWeapon = () => {
     try {
       const n = deref(store.me.inventory.activeInteractiveSlot); if (!n) return null;
       const s = deref(store.me.inventory.interactiveSlots).get(String(n));
       if (!s || !deref(s.itemId)) return null;
-      return { itemId: deref(s.itemId), clip: deref(s.currentClip), clipSize: deref(s.clipSize) };
+      return { itemId: deref(s.itemId), clip: deref(s.currentClip), clipSize: deref(s.clipSize), waiting: !!deref(s.waiting), reserve: reserveOf('snowballs') };
     } catch { return null; }
   };
   const myCentre = () => {
@@ -695,6 +702,13 @@
   const mouseWorld = () => { try { const p = scene.input.activePointer; return scene.cameras.main.getWorldPoint(p.x, p.y); } catch { return null; } };
 
   // Lead the target: where will it be when the snowball arrives? (fixed-point iteration)
+  // Players stop at walls: never predict through one (a runner pinned against a fence stays there).
+  const clampToWalls = (P, pt) => {
+    if (!blocked(P, pt, 6)) return pt;   // thin: a runner sliding along a fence must still be led
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (blocked(P, { x: P.x + (pt.x - P.x) * m, y: P.y + (pt.y - P.y) * m }, 6)) hi = m; else lo = m; }
+    return { x: P.x + (pt.x - P.x) * lo, y: P.y + (pt.y - P.y) * lo };
+  };
   const intercept = (C, P, V) => {
     const lag = (cfg.aimLeadMs || 0) / 1000;
     let t = 0, pt = P;
@@ -702,7 +716,7 @@
       pt = { x: P.x + V.x * (t + lag), y: P.y + V.y * (t + lag) };
       t = Math.max(0, (Math.hypot(pt.x - C.x, pt.y - C.y) - AIM.startDist) / AIM.speed);
     }
-    return pt;
+    return (V.x || V.y) ? clampToWalls(P, pt) : pt;
   };
 
   // Pick the target each frame. Auto-fire: the nearest one you can hit. Otherwise: the one closest to
@@ -728,8 +742,10 @@
       if (d - AIM.startDist > AIM.range * 0.97) return;
       anyInRange = true;
       const ang = Math.atan2(pt.y - C.y, pt.x - C.x);
-      // from your centre, not the spawn point: the server drops a throw whose spawn point is behind a wall
-      if (blocked(C, pt)) return;
+      // Two legs, like the server: centre → spawn point must not cross a wall (thin line; otherwise the
+      // throw is dropped), then the snowball's flight needs clearance (it's a ball, and stops ~30px from fences).
+      const S = { x: C.x + Math.cos(ang) * AIM.startDist, y: C.y + Math.sin(ang) * AIM.startDist };
+      if (blocked(C, S, 0) || blocked(S, pt)) return;
       let score = d;
       if (!cfg.autoFire && mouse) { let da = Math.abs(ang - mouseAng) % (2 * Math.PI); if (da > Math.PI) da = 2 * Math.PI - da; score = da; }
       if (score < bestScore) { bestScore = score; best = { id, pt, ang, name: c.name, steady: steady(id) }; }
@@ -738,7 +754,7 @@
     aim.target = best.id; aim.point = best.pt; aim.angle = best.ang; aim.why = '→ ' + best.name;
     if (!best.steady) aim.why += ' (turning)';
     // auto-fire waits out direction changes: snowballs are scarce (you only earn them by answering)
-    if (cfg.autoFire && best.steady && w.clip > 0 && deref(store.me.currentAction) !== 'deviceUI') {
+    if (cfg.autoFire && (best.steady || !cfg.aimWaitTurns) && w.clip > 0 && deref(store.me.currentAction) !== 'deviceUI') {
       try { scene.worldManager.projectiles.fire({ worldX: best.pt.x, worldY: best.pt.y }, false); } catch {}
     }
   };
@@ -778,6 +794,31 @@
     } catch {}
   };
   const aimHookT = setInterval(() => { try { installAimHook(); } catch {} }, 500);
+
+  // Rapid fire. Every snowball launcher has a 160 ms cooldown but allowAutoFire:false, so holding the
+  // mouse throws once and you must click for each throw. Flipping allowAutoFire in OUR copy of the item
+  // options makes the game's own hold-to-fire loop throw every 160 ms, the rate the server accepts
+  // (measured). Spamming raw FIREs faster (what older mods do) gets throttled to slower than normal.
+  const autoFireSaved = new Map();   // weapon.shared object -> original allowAutoFire
+  const weaponShareds = () => {
+    const out = []; try { const io = store.worldOptions.itemOptions; each(io, o => { const sh = o && o.weapon && o.weapon.shared; if (sh) out.push(sh); }); } catch {}
+    return out;
+  };
+  const applyRapid = on => {
+    if (on) { for (const sh of weaponShareds()) if (!autoFireSaved.has(sh)) { autoFireSaved.set(sh, sh.allowAutoFire); sh.allowAutoFire = true; } }
+    else { autoFireSaved.forEach((v, sh) => { try { sh.allowAutoFire = v; } catch {} }); autoFireSaved.clear(); }
+  };
+  // Auto-reload: an empty clip with snowballs left reloads by itself (same message as pressing R).
+  let lastReload = 0;
+  const gunTick = () => {
+    if (!store) return;
+    applyRapid(!!cfg.rapidFire);
+    if (!(cfg.aimbot || cfg.autoFire || cfg.rapidFire || cfg.ammoRefill)) return;
+    const w = heldWeapon(), r = room();
+    if (w && r && w.clip === 0 && !w.waiting && w.reserve > 0 && Date.now() - lastReload > 1500) { lastReload = Date.now(); r.send('RELOAD'); }
+  };
+  const gunT = setInterval(() => { try { gunTick(); } catch {} }, 300);
+  cleanups.push(() => { clearInterval(gunT); applyRapid(false); });
   cleanups.push(() => { clearInterval(aimHookT); if (hookedRoom && origSend) hookedRoom.send = origSend; if (offProj) try { offProj(); } catch {} });
 
   // drawn by the ESP overlay: ring on the target, small cross on the lead point
@@ -896,6 +937,27 @@
     r.send('MESSAGE_FOR_DEVICE', { key: 'answered', deviceId: devId, data: { answer } });
     ans.lastQid = qid; ans.lastAt = Date.now(); ans.sent++;
   };
+  // ♾ Ammo: snowballs only come from answering (6 per correct), but the server takes answers as fast as
+  // they come (measured 9.7/s, 0 wrong = ~58 snowballs/s). When you run low, answer at full speed until
+  // you're stocked. Note: your correct-answer count on the teacher's screen climbs fast while it runs.
+  const REFILL_LOW = 40, REFILL_FULL = 150;
+  const refill = { on: false, gained: 0 };
+  const ammoTick = () => {
+    if (!cfg.ammoRefill || !store || phase() !== 'game') { refill.on = false; return; }
+    const w = heldWeapon(); if (!w) { refill.on = false; return; }
+    const total = w.clip + w.reserve;
+    if (!refill.on && total < REFILL_LOW) refill.on = true;
+    if (refill.on && w.reserve >= REFILL_FULL) refill.on = false;
+    if (!refill.on || questionScreenOpen()) return;
+    const r = room(), devId = mainDevice(); if (!r || !devId) return;
+    const qid = currentQid(devId); if (!qid) return;
+    if (qid === ans.lastQid && Date.now() - ans.lastAt < 3000) return;   // wait for the server to move on
+    const answer = answerPayload(questionsOf(devId).find(x => x._id === qid)); if (answer == null) return;
+    r.send('MESSAGE_FOR_DEVICE', { key: 'answered', deviceId: devId, data: { answer } });
+    ans.lastQid = qid; ans.lastAt = Date.now(); ans.sent++; refill.gained++;
+  };
+  const ammoT = setInterval(() => { try { ammoTick(); } catch {} }, 60);
+  cleanups.push(() => clearInterval(ammoT));
   let nextAnswerAt = 0;
   const qt = setInterval(() => {
     try {
@@ -933,7 +995,7 @@
   group('Map', [['🗺 Minimap', 'minimap'], ['Screen box', 'screenBox']]);
   const syncMapRow = () => { boxes.minimap.parentElement.style.color = cfg.minimap ? '' : '#8b90a0'; };
   syncMapRow(); boxes.minimap.addEventListener('change', syncMapRow);
-  group('Aim (when cursed)', [['🎯 Aimbot', 'aimbot'], ['Auto-fire', 'autoFire']]);
+  group('Aim (when cursed)', [['🎯 Aimbot', 'aimbot'], ['Auto-fire', 'autoFire'], ['⚡ Rapid fire', 'rapidFire'], ['♾ Ammo', 'ammoRefill']]);
   const aimStat = document.createElement('div'); aimStat.style.cssText = 'opacity:.7;margin:0 0 2px;display:none'; panel.appendChild(aimStat);
   group('Answers', [['Highlight', 'highlight'], ['Auto-answer', 'autoAnswer']]);
   group('Fun (only you see it)', [['🌀 Spin', 'spin'], ['🟢 Shrek', 'shrek'], ['Everyone is Shrek', 'shrekAll']]);
@@ -953,8 +1015,10 @@
     const snowy = store ? isSnowy() : true;
     note.style.display = snowy ? 'none' : 'block';
     note.textContent = 'Not Snowy Survival: everyone is shown in neutral.';
-    aimStat.style.display = cfg.aimbot || cfg.autoFire ? 'block' : 'none';
-    aimStat.textContent = `🎯 ${aim.why || '…'} · ${aim.shots} thrown${aim.hits ? ', ' + aim.hits + ' hit' : ''}`;
+    aimStat.style.display = cfg.aimbot || cfg.autoFire || cfg.rapidFire || cfg.ammoRefill ? 'block' : 'none';
+    const gw = heldWeapon();
+    aimStat.textContent = `🎯 ${aim.why || '…'} · ${aim.shots} thrown${aim.hits ? ', ' + aim.hits + ' hit' : ''}` +
+      (gw ? ` · ❄ ${gw.clip}+${gw.reserve}` : '') + (refill.on ? ' · refilling…' : '');
     const s = myStats(); stat.textContent = `✓ ${s.correct}  ✗ ${s.incorrect}${cfg.autoAnswer ? (ans.paused ? '  · auto paused (question open)' : '  · auto-answer on') : ''}`;
     let zombies = 0, humans = 0;
     const rows = [];
@@ -992,7 +1056,7 @@
     cfg, ans,
     minimap: { theme: mmTheme, data: () => minimapData() },
     get scene() { return scene; }, get store() { return store; },
-    api: { aim: () => ({ ...aim, AIM }), phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures, minimap: () => minimapData() },
+    api: { aim: () => ({ ...aim, AIM }), los: (A, B, pr) => blocked(A, B, pr), phase, isSnowy, openQuestion, questionScreenOpen, mainDevice, currentQid, myStats, teamKind, pickImage, textures, minimap: () => minimapData() },
     destroy() { cleanups.forEach(f => { try { f(); } catch {} }); canvas.remove(); panel.remove(); delete window.__snowy; },
   };
 })();
