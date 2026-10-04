@@ -592,7 +592,11 @@ VCM_MODES.push((() => {
 [data-mode="tno"] .ar.special{background:linear-gradient(90deg,rgba(255,181,71,.11),rgba(255,181,71,.015) 80%)}
 [data-mode="tno"] .ar.special .t>b{color:#ffe2b3}
 [data-mode="tno"] .big.energy{color:var(--accent-warm)}
-[data-mode="tno"] .role{display:flex;align-items:center;gap:8px;font-weight:600}`,
+[data-mode="tno"] .you{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
+[data-mode="tno"] .you .yn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:650}
+[data-mode="tno"] .role{flex:0 0 auto;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:var(--s2)}
+[data-mode="tno"] .role.ta{background:color-mix(in srgb,var(--tone-a) 14%,transparent)}
+[data-mode="tno"] .role.tb{background:color-mix(in srgb,var(--tone-b) 13%,transparent)}`,
 
     install(hub) {
       if (window.__tnoReveal && window.__tnoReveal.destroy) window.__tnoReveal.destroy(); // the old stand-alone tool
@@ -635,14 +639,7 @@ VCM_MODES.push((() => {
       return null;
     },
 
-    // Status line + your in-game name (from the roster once we know which row is you, else the
-    // name Gimkit shows you; looked up once, then cached).
     status() {
-      const s = this.phaseStatus();
-      if (s && (S.ws || gameStatusNow())) s.who = myName();
-      return s;
-    },
-    phaseStatus() {
       if (S.gameStatus === 'results') return { dot: 'done', text: 'Game over · ' + winner() };
       if (gameStatusNow() === 'join') return { dot: 'idle', text: 'In the lobby · waiting for the host', tone: 'dim' };
       if (!isTno()) return S.ws || gameStatusNow() ? { dot: 'idle', text: 'Waiting to start', tone: 'dim' } : { dot: 'idle', text: 'Connecting…', tone: 'dim' };
@@ -693,8 +690,9 @@ VCM_MODES.push((() => {
         build(ui) {
           const { el, put, show, keyed } = ui;
           const you = el('div', { cls: 'card' });
-          const youRole = el('div', { cls: 'role' });
-          you.append(el('div', { cls: 'cap', text: 'You are' }), youRole);
+          // Your username with your role beside it.
+          const youName = el('b', { cls: 'yn' }), youRole = el('span', { cls: 'role' });
+          you.append(el('div', { cls: 'cap', text: 'You' }), el('div', { cls: 'you' }, youName, youRole));
           const leftN = el('b'), count = ui.lbl('Players');
           const head = ui.lblrow(count, el('span', { cls: 'note' }, leftN, ' impostors left'));
           const list = ui.listCard();
@@ -710,6 +708,7 @@ VCM_MODES.push((() => {
               show(waitCard, !have && lob); show(conn, !have && !lob);
               if (!have) return;
               const r = myRole(), dead = amEliminated();
+              put(youName, myName() || 'You');
               put(youRole, (dead ? '👻 ' : '') + (r === 'imposter' ? '🔪 Impostor' : r === 'detective' ? '🔍 Crewmate' : 'Not sure yet'));
               youRole.className = 'role ' + (r === 'imposter' ? 'ta' : r === 'detective' ? 'tb' : 'tn');
               put(count, 'Players · ' + S.people.length);

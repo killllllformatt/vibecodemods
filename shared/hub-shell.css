@@ -252,7 +252,7 @@ background:rgba(0,0,0,.45) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 #vcm-hub .ar .am .sub{white-space:normal;overflow:visible;min-width:0}
 #vcm-hub .ar.dis .an,#vcm-hub .ar.dis .am>.cost,#vcm-hub .ar.dis .am>.badge{opacity:.45}
 /* status line: "In game · <your name>" — the name gives way first on a narrow line */
-/* name sits on its own small line under the status (dot | status / name), so it never gets squeezed */
+/* second status line (dot | status / mode name) */
 #vcm-hub .st:has(.who:not(:empty)){display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:7px;row-gap:0;align-items:center;line-height:1.25}
 #vcm-hub .st .who{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--dim);font-size:10.5px;font-weight:500}
 #vcm-hub .st .who:empty{display:none}
@@ -261,5 +261,3 @@ background:rgba(0,0,0,.45) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 #vcm-hub .ar .mb{padding:0 9px;font-size:11.5px}
 /* right side of the status row: strip numbers, mode name underneath */
 #vcm-hub .metar{margin-left:auto;flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;line-height:1.25}
-#vcm-hub .mname{font-size:10.5px;font-weight:500;color:var(--dim);white-space:nowrap}
-#vcm-hub .mname:empty{display:none}
