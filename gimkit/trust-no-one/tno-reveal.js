@@ -45,7 +45,22 @@
     sawTno: false,       // any IMPOSTER_MODE_* traffic seen
     phaseSince: Date.now(),
     sendHooked: false,   // whether our outgoing-socket hook took (another script can lock it)
+    answerMode: '',      // '' | 'click' (pressing the real buttons) | 'direct' (fallback, see directAnswer)
+    directAnswers: 0,    // answers sent by the fallback this session
   });
+  // Settings survive Play Again (it reloads the page): saved on change, restored on the next run.
+  // The target isn't saved — player ids change every game.
+  const PREF_KEY = 'vcm-tno-settings';
+  const PREF_FIELDS = ['auto', 'on', 'autoVote', 'answerMs', 'jitter', 'actionEveryMs'];
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+    if (saved) PREF_FIELDS.forEach((k) => { if (k in saved) S[k] = saved[k]; });
+  } catch (e) {}
+  let savedPrefs = '';
+  function savePrefs() {
+    const v = JSON.stringify(Object.fromEntries(PREF_FIELDS.map((k) => [k, S[k]])));
+    if (v !== savedPrefs) { savedPrefs = v; try { localStorage.setItem(PREF_KEY, v); } catch (e) {} }
+  }
   const LOG_MAX = 100;
   const addLog = (kind, text) => { S.log.unshift({ t: Date.now(), kind, text }); if (S.log.length > LOG_MAX) S.log.length = LOG_MAX; };
   const nameOf = (id) => (S.people.find((p) => p.id === id) || {}).name || 'someone';
@@ -192,6 +207,7 @@
       render();
     } else if (msg.key === 'STATE_UPDATE' && msg.data) {
       if (msg.data.type === 'IMPOSTER_MODE_PERSON') { S.me = msg.data.value; render(); }
+      else if (msg.data.type === 'GAME_QUESTIONS' && Array.isArray(msg.data.value)) msg.data.value.forEach(cacheQ); // every question, on join
       else if (msg.data.type === 'GAME_STATUS') { // 'gameplay' → 'results' = game over (phase stays on its last value)
         S.gameStatus = msg.data.value;
         if (S.gameStatus === 'results') addLog('phase', 'Game over: ' + winner());
@@ -405,14 +421,54 @@
   // Changing S.answerMs mid-run just applies from the next question.
   let nextAnswerAt = 0;
   const jittered = () => S.answerMs * (1 + (Math.random() * 2 - 1) * S.jitter);
+
+  // Direct-answer fallback. Auto-answer normally clicks the real answer button, so the game's own UI
+  // stays in sync. When there's nothing to click (you're in Mission Control / notes / a meeting
+  // screen, or the button can't be found), after a short grace period we send QUESTION_ANSWERED
+  // ourselves at the same jittered pace. Questions come from GAME_QUESTIONS (sent once on join, so
+  // only caught if the tool was running before you joined) plus every question shown on screen.
+  // The server scores each send; the game's own question screen just doesn't advance for them.
+  const qCache = new Map();
+  const cacheQ = (q) => { if (q && q._id && Array.isArray(q.answers) && q.answers.some((a) => a.correct)) qCache.set(q._id, q); };
+  const phaseNow = () => { const s = stores(); return (s && deref(s.imposter.status)) || S.status; };
+  let offScreenSince = 0, directCursor = -1;
+  // Walk the game's own question order (ids) from where your screen is, skipping ones we can't answer.
+  function nextDirectQuestion() {
+    const s = stores();
+    const list = (s && s.questions && deref(s.questions.questionList)) || [];
+    const ids = list.length ? list : [...qCache.keys()];
+    if (directCursor < 0) directCursor = (s && s.questions && deref(s.questions.currentQuestionIndex)) || 0;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[(directCursor + i) % ids.length];
+      if (qCache.has(id)) { directCursor = (directCursor + i + 1) % ids.length; return qCache.get(id); }
+    }
+    return null;
+  }
+  function directAnswer() {
+    const q = nextDirectQuestion();
+    const c = q && q.answers.find((a) => a.correct);
+    if (!c) return false;
+    // multiple choice sends the answer id; typed-answer questions send the text
+    const ok = sendToRoom('QUESTION_ANSWERED', { questionId: q._id, answer: q.type === 'text' ? c.text : c._id });
+    if (ok) S.directAnswers++;
+    return ok;
+  }
   function autoTick() {
-    if (!S.auto || Date.now() < nextAnswerAt) return;
-    const cont = leaf('Continue');
-    if (cont) { reactClick(cont); nextAnswerAt = Date.now() + jittered(); return; }
     const q = currentQuestion();
+    cacheQ(q);
+    if (!S.auto) { offScreenSince = 0; S.answerMode = ''; return; }
+    const now = Date.now();
+    const cont = leaf('Continue');
     const c = q && q.answers.find((a) => a.correct);
     const span = c && answerSpan(c.text);
-    if (span) { reactClick(span); nextAnswerAt = Date.now() + 350 + Math.random() * 300; } // short beat before Continue
+    if (cont || span) { offScreenSince = 0; directCursor = -1; S.answerMode = 'click'; }
+    else if (!offScreenSince) offScreenSince = now;
+    if (now < nextAnswerAt) return;
+    if (cont) { reactClick(cont); nextAnswerAt = now + jittered(); return; }
+    if (span) { reactClick(span); nextAnswerAt = now + 350 + Math.random() * 300; return; } // short beat before Continue
+    if (offScreenSince && now - offScreenSince > 2500 && phaseNow() === 'questions' && S.gameStatus !== 'results') {
+      if (directAnswer()) { S.answerMode = 'direct'; nextAnswerAt = now + jittered(); }
+    }
   }
 
   // --- Mission Control automation engine ---
@@ -499,6 +555,7 @@
       if (!S.people.length && S.mode !== 'other' && (ticks % 8 === 0)) bootstrap();   // ~every 2s until we have the roster
       if (S.people.length && !S.me) resolveSelf();
       render();
+      savePrefs();
     } catch (e) {}
   }, 250);
   cleanups.push(() => clearInterval(loop));
@@ -613,7 +670,7 @@
       syncToggles(items);
       setText(stat, statusText());
     }
-    setText(autoB, S.auto ? 'ON' : 'off');
+    setText(autoB, S.auto ? (S.answerMode === 'direct' ? 'ON · direct' : 'ON') : 'off');
     setCss(autoB, `color:${S.auto ? '#56d364' : '#8b949e'}`);
   }
   bootstrap();
@@ -648,6 +705,9 @@
     gameCode: () => new URLSearchParams(location.search).get('gc'),
     connected: () => !!(S.ws && S.ws.readyState === 1 && S.room),
     mode: () => S.mode,                         // 'tno' | 'other' | 'unknown'
+    answerMode: () => S.answerMode,             // '' | 'click' | 'direct' (fallback while the question screen is away)
+    directAnswers: () => S.directAnswers,
+    knownQuestions: () => qCache.size,          // how many questions the fallback can answer
     gameOver: () => S.gameStatus === 'results',
     winner,                                     // 'Impostors win' | 'Crewmates win'
     // Stuck on the results screen for a minute = host probably left (players can't advance it).

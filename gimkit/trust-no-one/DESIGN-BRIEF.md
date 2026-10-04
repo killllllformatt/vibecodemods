@@ -211,7 +211,7 @@ Design the "sent → result" pairing so it's clear the result confirms the actio
 | 11 | **Game over** | Header result; all controls frozen/greyed; Log still scrollable |
 | 12 | **Stalled** (stuck on results ≥60 s) | Header warn "Game may have stalled (host left?)" |
 | 13 | **Another cheat script detected** | One-time dismissible banner: "Another Gimkit cheat is running (gimkit cheats MOD MENU). Turn off its auto-answer so answers aren't sent twice." |
-| 14 | **Play Again** | Gimkit reloads the page, so the panel disappears. Nothing to design; Settings can carry the hint "After Play Again, click the bookmark again." |
+| 14 | **Play Again** | Gimkit reloads the page, so the panel disappears. Nothing to design; Settings can carry the hint "After Play Again, click the bookmark again. Your settings come back." (Toggles, auto-answer and speed are saved; the target isn't.) |
 | 15 | **Minimized** | Header only, with status dot + ⚡ |
 | 16 | **First use** | Acknowledgement card over Actions/Answers |
 
@@ -240,6 +240,8 @@ them directly. All values below are live.
 | queue | ordered armed actions | "Next up" |
 | autoVote | on/off | |
 | auto-answer, speed | on/off, ms | |
+| answerMode | `click` · `direct` · '' | `direct` = you're off the question screen and it's answering for you in the background; worth a small "answering in background" tag |
+| directAnswers / knownQuestions | 7 / 50 | answers sent in the background · questions it can answer (all 50 if the bookmark was clicked before joining) |
 | stats | `{correct, incorrect, total, accuracy, streak}` | |
 | log[] | `{t, kind, text}` | §5.4 kinds |
 | otherScripts | `["gimkit cheats (MOD MENU)"]` | state 13 |
