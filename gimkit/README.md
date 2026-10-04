@@ -14,7 +14,7 @@ merged into one mode-detecting menu eventually, built from this code.
 
 Each file is a self-contained IIFE. To run: paste it inline into the page console (the live site's
 CSP blocks loading from `127.0.0.1`, so inline is the reliable path). Both toggle their panel with
-**Insert**. Wrapping into a bookmarklet is a later step — don't add that machinery back here.
+**Insert**; running a script a second time calls its `destroy()` (every hook, listener and timer undone). Wrapping into a bookmarklet is a later step — don't add that machinery back here.
 
 Trust No One also has [`trust-no-one/DESIGN-BRIEF.md`](trust-no-one/DESIGN-BRIEF.md): the
 design-only hand-off for Claude Design (screens, states, copy, STAX look). Claude Design designs; all

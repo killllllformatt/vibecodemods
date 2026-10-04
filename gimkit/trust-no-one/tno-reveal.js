@@ -21,8 +21,12 @@
 // For UI code: window.__tnoReveal exposes state, actions and read getters under .api —
 // the full contract is in DESIGN-BRIEF.md ("Data the UI can show").
 (() => {
-  // Bookmarklet clicked again → toggle the panel instead of loading a second copy.
-  if (window.__tnoReveal) { if (window.__tnoReveal.toggle) window.__tnoReveal.toggle(); return; }
+  // Run again (bookmarklet re-click / re-paste) → tear the running copy down completely. Run once
+  // more to start fresh. (Insert still just hides/shows.)
+  if (window.__tnoReveal) { if (window.__tnoReveal.destroy) window.__tnoReveal.destroy(); return; }
+  // Every hook/listener/timer pushes its undo here; destroy() runs them all (same pattern as snowy.js).
+  const cleanups = [];
+  let alive = true;
   const S = (window.__tnoReveal = {
     people: [], me: null, status: '', gameStatus: '', ws: null, room: null, auto: false,
     // Mission Control automation state:
@@ -129,7 +133,7 @@
   }
 
   function sendToRoom(key, data) {
-    if (!S.ws || S.ws.readyState !== 1 || !S.room) return false;
+    if (!alive || !S.ws || S.ws.readyState !== 1 || !S.room) return false; // also stops timers queued before destroy()
     // The game omits `data` entirely when there is no payload (e.g. REQUEST_PEOPLE) — match that
     // exactly rather than sending an explicit undefined, so we never trip server-side validation.
     const inner = data === undefined ? { room: S.room, key } : { room: S.room, key, data };
@@ -208,19 +212,23 @@
   // `this.target` is the WebSocket. Catches the already-open lobby socket (mid-game inject).
   const desc = Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'data');
   const seen = new WeakSet();
-  Object.defineProperty(MessageEvent.prototype, 'data', {
-    configurable: true,
-    enumerable: desc.enumerable,
-    get() {
-      const d = desc.get.call(this);
-      try {
-        if (this.target instanceof WebSocket && d instanceof ArrayBuffer && !seen.has(this)) {
-          seen.add(this);
-          onFrame(this.target, d);
-        }
-      } catch (e) {}
-      return d;
-    },
+  const ourGet = function () {
+    const d = desc.get.call(this);
+    if (!alive) return d;
+    try {
+      if (this.target instanceof WebSocket && d instanceof ArrayBuffer && !seen.has(this)) {
+        seen.add(this);
+        onFrame(this.target, d);
+      }
+    } catch (e) {}
+    return d;
+  };
+  Object.defineProperty(MessageEvent.prototype, 'data', { configurable: true, enumerable: desc.enumerable, get: ourGet });
+  // Only put the native getter back if nobody hooked on top of us since — restoring then would rip
+  // out their hook too. In that case ourGet stays in their chain as a pass-through (alive = false).
+  cleanups.push(() => {
+    const cur = Object.getOwnPropertyDescriptor(MessageEvent.prototype, 'data');
+    if (cur && cur.get === ourGet) Object.defineProperty(MessageEvent.prototype, 'data', desc);
   });
 
   // Mid-game inject: incoming binary traffic can be quiet for a while (idle "Continue" screens),
@@ -231,11 +239,13 @@
   // socket on the next server frame, and sending still works because ws.send stays native.
   const origSend = WebSocket.prototype.send;
   const ourSend = function () {
-    if (!S.ws && /gimkitconnect/.test(this.url)) { S.ws = this; bootstrap(); }
+    if (alive && !S.ws && /gimkitconnect/.test(this.url)) { S.ws = this; bootstrap(); }
     return origSend.apply(this, arguments);
   };
   try { WebSocket.prototype.send = ourSend; } catch (e) {}
   S.sendHooked = WebSocket.prototype.send === ourSend;
+  // Same rule as the getter: un-patch only if we're still the top layer, else stay a pass-through.
+  cleanups.push(() => { if (WebSocket.prototype.send === ourSend) try { WebSocket.prototype.send = origSend; } catch (e) {} });
 
   // --- React helpers ---
   function fiberOf(el) { const k = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); return k && el[k]; }
@@ -379,6 +389,7 @@
     marked = box || null;
     if (marked) { marked.style.outline = '4px solid #56d364'; marked.style.outlineOffset = '-6px'; }
   }
+  cleanups.push(() => { if (marked) { marked.style.outline = ''; marked.style.outlineOffset = ''; marked = null; } });
   // Speed = S.answerMs per question with ±S.jitter spread (even timing stands out on a leaderboard).
   // Changing S.answerMs mid-run just applies from the next question.
   let nextAnswerAt = 0;
@@ -464,9 +475,10 @@
   }
 
   // Housekeeping loop: highlight/auto-answer + the Mission Control engine (own 4s throttle inside),
-  // keep retrying the handshake until the roster is in, and keep the live status line fresh.
+  // keep retrying the handshake until the roster is in, and keep the panel fresh (render() is cheap:
+  // it only writes to the DOM where something changed).
   let ticks = 0;
-  setInterval(() => {
+  const loop = setInterval(() => {
     try {
       highlightTick();
       autoTick();
@@ -476,18 +488,51 @@
       ticks++;
       if (!S.people.length && S.mode !== 'other' && (ticks % 8 === 0)) bootstrap();   // ~every 2s until we have the roster
       if (S.people.length && !S.me) resolveSelf();
-      updateStatus();
+      render();
     } catch (e) {}
   }, 250);
+  cleanups.push(() => clearInterval(loop));
 
   // --- panel ---
+  // Built once. render() runs every loop tick but only writes to the DOM where the text/style
+  // actually changed (snowy.js trick), so an open Target dropdown isn't destroyed under you.
   const panel = document.createElement('div');
   panel.style.cssText =
     'position:fixed;top:12px;right:12px;z-index:2147483647;width:236px;padding:10px 12px;' +
     'background:rgba(10,14,20,.9);color:#e6edf3;font:13px/1.45 system-ui,sans-serif;' +
     'border:1px solid #30363d;border-radius:8px;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-  document.documentElement.appendChild(panel);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const el = (tag, css, parent) => { const e = document.createElement(tag); if (css) e.style.cssText = css; (parent || panel).appendChild(e); return e; };
+  const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+  const setHTML = (e, h) => { if (e._html !== h) { e.innerHTML = h; e._html = h; } };
+  const setCss = (e, c) => { if (e._css !== c) { e.style.cssText = c; e._css = c; } };
+  const show = (e, on, display) => { const v = on ? display : 'none'; if (e.style.display !== v) e.style.display = v; };
+
+  el('b').textContent = 'TNO reveal';
+  const rosterBox = el('div');
+  const ctl = el('div', 'margin-top:7px;border-top:1px solid #30363d;padding-top:6px');
+  el('div', 'opacity:.55;font-size:10.5px;margin-bottom:4px', ctl).textContent = 'Auto Mission Control (◎ = needs target)';
+  const pickRow = el('div', 'display:flex;align-items:center;gap:5px;margin-bottom:4px', ctl);
+  el('span', 'opacity:.6;font-size:11px', pickRow).textContent = 'Target';
+  const sel = el('select', 'pointer-events:auto;flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:5px;font:11px system-ui;padding:2px', pickRow);
+  sel.id = 'tnoTarget';
+  Object.assign(el('option', '', sel), { value: '', textContent: '— nobody —' });
+  sel.onchange = () => { S.target = sel.value; };
+  const togBox = el('div', 'display:flex;flex-wrap:wrap', ctl);
+  // One delegated handler, so buttons can be added/removed without rewiring.
+  togBox.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-k]');
+    if (b) { S.on[b.dataset.k] = !S.on[b.dataset.k]; render(); }
+  });
+  const noActs = el('span', 'opacity:.6;font-size:11px', ctl);
+  noActs.textContent = 'no actions available';
+  const stat = el('div', 'opacity:.6;font-size:10.5px;margin-top:5px', ctl);
+  stat.id = 'tnoStat';
+  const foot = el('div', 'margin-top:6px;opacity:.55;font-size:11px');
+  foot.append('F8 auto-answer: ');
+  const autoB = el('b', '', foot);
+  foot.append(' · Ins hide');
+  document.documentElement.appendChild(panel);
 
   function rosterHTML() {
     if (!S.people.length) {
@@ -513,61 +558,69 @@
     return `<div style="opacity:.6;margin-bottom:2px">${left} impostor(s) left</div>${rows}`;
   }
 
-  function controlsHTML() {
-    const items = shopItems();
-    if (!S.people.length) return '';
-    const opts = S.people
-      .filter((p) => !(S.me && S.me.id === p.id))
-      .map((p) => `<option value="${esc(p.id)}" ${p.id === S.target ? 'selected' : ''}>${esc(p.name)}${p.votedOff ? ' (ejected)' : ''}</option>`)
-      .join('');
-    const tog = items.map((it) => {
+  // Reconcile <option>s in place (keyed by player id) instead of rebuilding the <select>.
+  function syncTargets() {
+    const want = S.people.filter((p) => !(S.me && S.me.id === p.id));
+    const have = new Map([...sel.options].slice(1).map((o) => [o.value, o]));
+    want.forEach((p, i) => {
+      let o = have.get(p.id);
+      if (o) have.delete(p.id); else { o = document.createElement('option'); o.value = p.id; }
+      setText(o, p.name + (p.votedOff ? ' (ejected)' : ''));
+      if (sel.options[i + 1] !== o) sel.insertBefore(o, sel.options[i + 1] || null);
+    });
+    have.forEach((o) => o.remove());
+    if (sel.value !== S.target && (!S.target || want.some((p) => p.id === S.target))) sel.value = S.target;
+  }
+  // Same for the action toggles (keyed by shop item id).
+  function syncToggles(items) {
+    const have = new Map([...togBox.children].map((b) => [b.dataset.k, b]));
+    items.forEach((it, i) => {
+      let b = have.get(it.id);
+      if (b) have.delete(it.id); else { b = document.createElement('button'); b.dataset.k = it.id; }
       const onv = !!S.on[it.id];
-      const tgt = NO_TARGET.has(it.id) ? '' : ' ◎';
-      return `<button data-k="${esc(it.id)}" style="pointer-events:auto;cursor:pointer;margin:2px 2px 0 0;padding:3px 7px;border-radius:6px;` +
+      setCss(b, 'pointer-events:auto;cursor:pointer;margin:2px 2px 0 0;padding:3px 7px;border-radius:6px;' +
         `border:1px solid ${onv ? '#56d364' : '#30363d'};background:${onv ? 'rgba(86,211,100,.18)' : 'rgba(255,255,255,.04)'};` +
-        `color:${onv ? '#56d364' : '#c9d1d9'};font:11px system-ui">${esc(it.name)}${tgt} <b>⚡${it.cost || 0}</b> · ${onv ? 'ON' : 'off'}</button>`;
-    }).join('');
-    const picker = items.every((it) => NO_TARGET.has(it.id)) ? '' :
-      `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">` +
-      `<span style="opacity:.6;font-size:11px">Target</span>` +
-      `<select id="tnoTarget" style="pointer-events:auto;flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:5px;font:11px system-ui;padding:2px"><option value="" ${S.target ? '' : 'selected'}>— nobody —</option>${opts}</select>` +
-      `</div>`;
-    return `<div style="margin-top:7px;border-top:1px solid #30363d;padding-top:6px">` +
-      `<div style="opacity:.55;font-size:10.5px;margin-bottom:4px">Auto Mission Control (◎ = needs target)</div>` +
-      picker +
-      `<div style="display:flex;flex-wrap:wrap">${tog || '<span style="opacity:.6;font-size:11px">no actions available</span>'}</div>` +
-      `<div id="tnoStat" style="opacity:.6;font-size:10.5px;margin-top:5px">${statusText()}</div>` +
-      `</div>`;
+        `color:${onv ? '#56d364' : '#c9d1d9'};font:11px system-ui`);
+      setHTML(b, `${esc(it.name)}${NO_TARGET.has(it.id) ? '' : ' ◎'} <b>⚡${it.cost || 0}</b> · ${onv ? 'ON' : 'off'}`);
+      if (togBox.children[i] !== b) togBox.insertBefore(b, togBox.children[i] || null);
+    });
+    have.forEach((b) => b.remove());
+    show(noActs, !items.length, '');
   }
 
   function statusText() {
-    return `⚡${balanceVal()} · inv ${invLeft()} · meet ${meetLeft()} · ${esc(myRole())}${amEliminated() ? ' · ELIMINATED' : ''}`;
-  }
-  function updateStatus() {
-    const el = panel.querySelector('#tnoStat');
-    if (el) el.textContent = statusText();
+    return `⚡${balanceVal()} · inv ${invLeft()} · meet ${meetLeft()} · ${myRole()}${amEliminated() ? ' · ELIMINATED' : ''}`;
   }
 
   function render() {
-    if (panel.style.display === 'none') return; // keep hidden state
-    const foot = `<div style="margin-top:6px;opacity:.55;font-size:11px">F8 auto-answer: <b style="color:${S.auto ? '#56d364' : '#8b949e'}">${S.auto ? 'ON' : 'off'}</b> · Ins hide</div>`;
-    panel.innerHTML = `<b>TNO reveal</b>${rosterHTML()}${controlsHTML()}${foot}`;
-    wireControls();
-  }
-  function wireControls() {
-    const sel = panel.querySelector('#tnoTarget');
-    if (sel) sel.onchange = () => { S.target = sel.value; };
-    panel.querySelectorAll('button[data-k]').forEach((b) => {
-      b.onclick = () => { const k = b.dataset.k; S.on[k] = !S.on[k]; render(); };
-    });
+    if (!alive || panel.style.display === 'none') return; // keep hidden state
+    setHTML(rosterBox, rosterHTML());
+    show(ctl, S.people.length > 0, '');
+    if (S.people.length) {
+      const items = shopItems();
+      show(pickRow, !items.every((it) => NO_TARGET.has(it.id)), 'flex');
+      syncTargets();
+      syncToggles(items);
+      setText(stat, statusText());
+    }
+    setText(autoB, S.auto ? 'ON' : 'off');
+    setCss(autoB, `color:${S.auto ? '#56d364' : '#8b949e'}`);
   }
   bootstrap();
 
   S.toggle = () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; if (panel.style.display !== 'none') render(); };
-  addEventListener('keydown', (e) => {
+  const onKey = (e) => {
     if (e.key === 'Insert') S.toggle();
     else if (e.key === 'F8') { e.preventDefault(); S.auto = !S.auto; render(); }
-  });
+  };
+  addEventListener('keydown', onKey);
+  cleanups.push(() => removeEventListener('keydown', onKey));
+  S.destroy = () => {
+    alive = false;
+    cleanups.splice(0).forEach((f) => { try { f(); } catch (e) {} });
+    panel.remove();
+    if (window.__tnoReveal === S) delete window.__tnoReveal;
+  };
   S.requestPeople = requestPeople;
   S.purchase = purchase;
   S.vote = vote;

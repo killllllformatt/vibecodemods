@@ -75,7 +75,7 @@ status dot (`live` purple / `warn` red).
 - **Default position:** top-right, **72px from the top** (Gimkit's top bar and its own ⚡ counter sit
   above that; see [`design/tno-in-game-current-tool.png`](design/tno-in-game-current-tool.png)).
 - Draggable by the header (mouse + touch). **Minimized** = header only.
-- Show/hide key is **backtick or Insert**. Clicking the bookmarklet again also hides/shows. Put the
+- Show/hide key is **backtick or Insert**. Clicking the bookmarklet again fully removes the tool (click once more to reload it). Put the
   key hint in Settings, not in the header.
 - Max height = viewport − 88px. Tab content scrolls inside.
 
@@ -183,7 +183,7 @@ Design the "sent → result" pairing so it's clear the result confirms the actio
 - Default auto-answer speed (Slow / Normal / Fast)
 - Panel opacity (slider)
 - Reset panel position (button)
-- Show/hide key reminder: `` ` `` or Insert. Click the bookmark again to hide.
+- Show/hide key reminder: `` ` `` or Insert. Click the bookmark again to turn the tool off completely.
 - Game code (only when known)
 - First-use acknowledgement, the same pattern as STAX: "Actions and answers are visible to other
   players and the teacher." [I understand]. It gates the Actions and Answers tabs once.
