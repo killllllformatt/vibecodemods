@@ -22,7 +22,8 @@
 //                                | 'wait' (still connecting) | 'no'
 //   waiting()                    while detect() says 'wait': { status, icon, title, text } to show
 //                                instead of the Connecting skeleton (e.g. "Enter the game code"), or null
-//   status()                     { dot: 'live'|'warn'|'idle'|'done'|'', text, tone: ''|'dim'|'warn' }
+//   status()                     { dot: 'live'|'warn'|'idle'|'done'|'', text, tone: ''|'dim'|'warn',
+//                                  who }  who = your in-game name, shown dim after the text
 //   strip(ui)                    -> { node, update() }  header strip numbers
 //   mini()                       -> text shown next to the dot while minimized
 //   ack                          first-use text, shown once over tabs marked pub:true
@@ -181,11 +182,12 @@ function createHub(opts) {
   // update({ name, cost, badges:[{text, warm}], state:''|'on'|'wait'|'fired'|'dis', sub, subWhy,
   //          special, useLabel, useDisabled, auto, autoDisabled })
   function actionRow({ onUse, onAuto }) {
-    const name = el('b'), cost = el('span', { cls: 'cost' }), badges = el('span', { style: 'display:contents' });
+    // The name gets the full width (never cut off); cost + badges + status share the line below.
+    const name = el('b', { cls: 'an' }), cost = el('span', { cls: 'cost' }), badges = el('span', { style: 'display:contents' });
     const sub = el('small', { cls: 'sub' });
     const use = el('button', { type: 'button', cls: 'mb', onclick: () => { onUse(); hub.refresh(); } });
     const tg = bareToggle(onAuto);
-    const node = el('div', { cls: 'ar' }, el('div', { cls: 'nm' }, el('div', { cls: 't' }, name, cost, badges), sub), use, tg.node);
+    const node = el('div', { cls: 'ar' }, el('div', { cls: 'nm' }, name, el('div', { cls: 'am' }, cost, badges, sub)), use, tg.node);
     return {
       node,
       update(o) {
@@ -265,8 +267,8 @@ function createHub(opts) {
   const head = el('div', { cls: 'hd' },
     el('div', { cls: 'wm' }, el('strong', { text: 'vibecode' }), 'mods', el('em', { text: '/' })),
     chip, el('span', { cls: 'sp' }), mini, minBtn, closeBtn);
-  const stDot = el('i', { cls: 'dot' }), stTxt = el('b');
-  const st = el('span', { cls: 'st' }, stDot, stTxt);
+  const stDot = el('i', { cls: 'dot' }), stTxt = el('b'), stWho = el('span', { cls: 'who' });
+  const st = el('span', { cls: 'st' }, stDot, stTxt, stWho);
   const stripSlot = el('span', { cls: 'strip' });
   const meta = el('div', { cls: 'meta' }, st, stripSlot);
   const bannerSlot = el('div', { style: 'display:contents' });
@@ -422,6 +424,8 @@ function createHub(opts) {
     stDot.className = 'dot' + (s.dot ? ' ' + s.dot : '');
     st.className = 'st' + (s.tone ? ' ' + s.tone : '');
     put(stTxt, s.text);
+    put(stWho, s.who || '');
+    stWho.title = s.who || '';
     miniDot.className = stDot.className;
     let mt = '';
     if (screen === 'mode' && active.mini) try { mt = active.mini() || ''; } catch (e) {}

@@ -272,6 +272,12 @@ VCM_MODES.push((() => {
     dfs((f) => { const u = f.memoizedProps && f.memoizedProps.user; if (u && typeof u.name === 'string') { found = u.name; return true; } });
     return found;
   }
+  let _myName = '', _myNameAt = 0;
+  function myName() {
+    if (S.me && S.me.name) return S.me.name;
+    if (!_myName && Date.now() - _myNameAt > 3000) { _myNameAt = Date.now(); _myName = ownName() || ''; }
+    return _myName;
+  }
   // Prefer IMPOSTER_MODE_PERSON (by id); fall back to a unique display-name match.
   function resolveSelf() {
     if (S.me && S.me.id) return;
@@ -558,7 +564,9 @@ VCM_MODES.push((() => {
   // A blocked row that you can still arm (Auto waits for it) vs one that can't happen at all.
   const SOFT = /^(Need ⚡|Pick a target|Nothing to donate)/;
   const isTno = () => S.mode === 'tno';
-  const inLobby = () => gameStatusNow() === 'join' || !S.people.length;
+  // Lobby = the game hasn't started. In a running game with no roster yet (fresh mid-game inject) we
+  // still show the game UI; only the roster-dependent bits wait for it.
+  const inLobby = () => { const g = gameStatusNow(); return g === 'join' || (!g && !S.people.length); };
   const fmtClock = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 
   function rosterRows() {
@@ -627,7 +635,14 @@ VCM_MODES.push((() => {
       return null;
     },
 
+    // Status line + your in-game name (from the roster once we know which row is you, else the
+    // name Gimkit shows you; looked up once, then cached).
     status() {
+      const s = this.phaseStatus();
+      if (s && (S.ws || gameStatusNow())) s.who = myName();
+      return s;
+    },
+    phaseStatus() {
       if (S.gameStatus === 'results') return { dot: 'done', text: 'Game over · ' + winner() };
       if (gameStatusNow() === 'join') return { dot: 'idle', text: 'In the lobby · waiting for the host', tone: 'dim' };
       if (!isTno()) return S.ws || gameStatusNow() ? { dot: 'idle', text: 'Waiting to start', tone: 'dim' } : { dot: 'idle', text: 'Connecting…', tone: 'dim' };
@@ -650,7 +665,7 @@ VCM_MODES.push((() => {
       return {
         node,
         update() {
-          const on = isTno() && S.people.length > 0;
+          const on = isTno() && (S.people.length > 0 || gameLive());
           [role, energy, imps, inv, meet].forEach((n) => show(n, on));
           if (!on) return;
           const r = myRole(), dead = amEliminated();
@@ -658,7 +673,7 @@ VCM_MODES.push((() => {
           role.className = r === 'imposter' ? 'ta' : r === 'detective' ? 'tb' : 'tn';
           role.title = r === 'imposter' ? 'You: Impostor' : r === 'detective' ? 'You: Crewmate' : '';
           put(energy, '⚡ ' + balanceVal());
-          show(imps, !dead); show(inv, !dead); show(meet, !dead);
+          show(imps, !dead && S.people.length > 0); show(inv, !dead); show(meet, !dead);
           put(imps, '🔪' + api.impostorsLeft());
           put(inv, '🔎' + invLeft());
           put(meet, '📣' + meetLeft());
@@ -691,7 +706,7 @@ VCM_MODES.push((() => {
             update() {
               const have = S.people.length > 0;
               show(you, have); show(head, have); show(list, have);
-              const lob = !!S.ws || gameStatusNow() === 'join';
+              const lob = gameStatusNow() === 'join' || (!gameStatusNow() && !!S.ws);
               show(waitCard, !have && lob); show(conn, !have && !lob);
               if (!have) return;
               const r = myRole(), dead = amEliminated();
