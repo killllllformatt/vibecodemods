@@ -12,7 +12,8 @@
 //    moves the energy you really have (no free/infinite anything). So automation just fires the
 //    purchase when you can actually afford it. The available actions + their costs are read live
 //    from the game's own shop list, so this works for whatever role you are (crewmate or impostor)
-//    and for the donate-only shop you get after being voted out.
+//    and for the donate-only shop you get after being voted out. If the teacher turned off student
+//    meetings, crewmates still get a "Forced meeting" (the server accepts it; it ignores impostors').
 //
 // Mode = classic (Blueboat), NOT Colyseus/Phaser: wss://<x>.gimkitconnect.com/blueboat (socket.io v2),
 // binary frames = 0x04 + msgpack {type:2, data:[event, payload], nsp:"/"}.
@@ -146,7 +147,7 @@
   // this one frame. `on` is the target id for targeted actions, omitted for the rest.
   const purchase = (item, on) => {
     const ok = sendToRoom('IMPOSTER_MODE_PURCHASE', on === undefined ? { item } : { item, on });
-    const it = shopItems().find((x) => x.id === item);
+    const it = actionItems().find((x) => x.id === item);
     if (ok) addLog('sent', `You sent ${it ? it.name : item}${on ? ' on ' + nameOf(on) : ''}`);
     return ok;
   };
@@ -316,6 +317,16 @@
     const si = s.imposter.shopItems;
     return Array.isArray(si) ? si : (si && si.slice ? [...si] : []);
   }
+  // Teacher turned off Student-Called Meetings: that only drops Meeting from the shop list. The
+  // server still accepts the purchase (verified live: meeting starts, ⚡10 charged), so we keep
+  // offering it as a forced meeting. It still draws from the shared meetings-left pool.
+  const FORCED_MEETING = { id: 'meeting', name: 'Forced meeting', cost: 10, forced: true };
+  const canForceMeeting = () => {
+    const items = shopItems();
+    return items.length > 0 && !amEliminated() && myRole() === 'detective' && !items.some((i) => i.id === 'meeting');
+  };
+  // Everything the panel + engine can act on: the game's shop, plus the forced meeting when it applies.
+  const actionItems = () => (canForceMeeting() ? shopItems().concat(FORCED_MEETING) : shopItems());
   // Actions that take no target (the meeting is group-wide; a disguise applies to yourself).
   const NO_TARGET = new Set(['meeting', 'blendIn']);
   // These draw from the shared "investigations left" pool.
@@ -412,13 +423,12 @@
   const IMP_ITEMS = ['investigationRemover', 'fakeInvestigation', 'clearListRemover', 'blendIn'];
   // Why an action can't fire right now ('' = ready). The UI shows this text on greyed rows.
   function blockReason(id) {
-    const items = shopItems();
+    const items = actionItems();
     const it = items.find((x) => x.id === id);
     if (S.gameStatus === 'results') return 'Game over';
     if (!it) {
       if (amEliminated()) return "You're eliminated: only Donate is available";
       if (id === 'donate') return "Only after you're voted out";
-      if (id === 'meeting' && myRole() === 'detective' && items.length) return 'Your teacher turned off student meetings';
       if (CREW_ITEMS.includes(id) && myRole() === 'imposter') return 'Crewmate-only';
       if (IMP_ITEMS.includes(id) && myRole() === 'detective') return 'Impostor-only';
       return 'Not available right now';
@@ -437,7 +447,7 @@
   }
   // Armed actions in the order the round-robin will try them next (the UI shows "next up").
   function queue() {
-    const armed = shopItems().filter((it) => it && S.on[it.id]);
+    const armed = actionItems().filter((it) => it && S.on[it.id]);
     if (!armed.length) return [];
     const k = S.rr % armed.length;
     return armed.slice(k).concat(armed.slice(0, k));
@@ -456,7 +466,7 @@
     if (now - S.lastAction < S.actionEveryMs) return;
     // Round-robin: try each armed action once, starting after the last one that fired, so a cheap
     // action can't starve the pricier ones.
-    const armed = shopItems().filter((it) => it && S.on[it.id]);
+    const armed = actionItems().filter((it) => it && S.on[it.id]);
     for (let i = 0; i < armed.length; i++) {
       const idx = (S.rr + i) % armed.length;
       const it = armed[idx];
@@ -597,7 +607,7 @@
     setHTML(rosterBox, rosterHTML());
     show(ctl, S.people.length > 0, '');
     if (S.people.length) {
-      const items = shopItems();
+      const items = actionItems();
       show(pickRow, !items.every((it) => NO_TARGET.has(it.id)), 'flex');
       syncTargets();
       syncToggles(items);
@@ -644,7 +654,8 @@
     stalled: () => S.status === 'votingResult' && S.gameStatus !== 'results' && Date.now() - S.phaseSince > 60000,
     // Voting never times out on its own: it waits for every vote or the host's "End Voting Early".
     votingFor: () => (S.status === 'voting' ? Math.round((Date.now() - S.phaseSince) / 1000) : 0),
-    studentMeetingsOff: () => myRole() === 'detective' && !amEliminated() && shopItems().length > 0 && !shopItems().some((i) => i.id === 'meeting'),
+    studentMeetingsOff: canForceMeeting,  // true = the Meeting row is a forced meeting
+    actionItems,                          // shopItems() + the forced meeting when it applies (rows carry forced:true)
     blockReason, queue, targetLive,
     otherScripts: () => [
       window.stores && window.stores.assignment && 'Gimkit Cheat (TheLazySquid)',

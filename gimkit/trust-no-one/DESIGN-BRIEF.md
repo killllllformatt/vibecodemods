@@ -126,6 +126,11 @@ Each row has a name, ⚡ cost, a ◎ badge if it needs a target, a **Do once** b
 | Note Look | 7 | ◎ | | Unclear | 15 | ◎ |
 | Meeting | 10 | | | Disguise | 15 | |
 
+**Forced meeting:** when the teacher turns off student meetings, the Meeting row stays usable and is
+renamed **"Forced meeting"** (⚡10, crewmates only; the server still accepts it). Give it a small
+⚑ "teacher turned these off" badge. It still uses the shared meetings-left pool, and a failed vote on
+the *last* meeting hands the impostors the win, so a "last meeting" note on the row is worth designing.
+
 When **you're eliminated**, every row above is greyed and a single **Donate** row moves to the top
 ("Give all your ⚡ to the target"), with an Auto toggle. Auto-donate gives everything the moment any
 energy arrives.
@@ -134,7 +139,6 @@ energy arrives.
 - "You're eliminated: only Donate is available"
 - "Only after you're voted out" (Donate while alive)
 - "Crewmate-only" / "Impostor-only"
-- **"Your teacher turned off student meetings"**
 - "No meetings left" / "No investigations left"
 - "Need ⚡4 more" (number varies)
 - "Pick a target first"
@@ -199,7 +203,7 @@ Design the "sent → result" pairing so it's clear the result confirms the actio
 | 3 | **Lobby** | Roles: "Waiting for liftoff". Actions/Answers disabled with that reason. |
 | 4 | **In game, crewmate** | Full panel, crewmate rows active |
 | 5 | **In game, impostor** | Impostor rows active, crewmate rows greyed |
-| 6 | **Teacher turned off student meetings** | Crewmate panel; Meeting row greyed with that reason (meetings-left counter can still say 1–2, because the host can still call them) |
+| 6 | **Teacher turned off student meetings** | Crewmate panel; Meeting row shows as **Forced meeting** (⚡10) with the ⚑ badge, still fully usable. Impostors never get it (the server ignores theirs). |
 | 7 | **Meeting / Voting** | Header "Meeting"/"Voting · 0:42"; auto-vote toggle emphasised. Actions still work during meetings. |
 | 8 | **Voting has no timer** | After ~30 s in Voting, add a hint: "Waiting for everyone to vote or the host to end voting" |
 | 9 | **You're eliminated** | Header 👻; Donate on top; everything else greyed |
@@ -232,7 +236,7 @@ them directly. All values below are live.
 | impostorsLeft / investigationsLeft / meetingsLeft | 2 / 31 / 1 | investigations are shared by everyone |
 | people[] | `{name, role, votedOff, markedAsClear}` | + which one is you (may be unknown) |
 | target | player id or none | |
-| shop rows | `{id, name, cost}` + `blockReason` string + armed (Auto) on/off | §5.2 strings |
+| shop rows | `{id, name, cost, forced?}` (from `api.actionItems()`) + `blockReason` string + armed (Auto) on/off | §5.2 strings; `forced:true` = forced meeting |
 | queue | ordered armed actions | "Next up" |
 | autoVote | on/off | |
 | auto-answer, speed | on/off, ms | |
