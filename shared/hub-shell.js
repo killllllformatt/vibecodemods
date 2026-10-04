@@ -14,7 +14,7 @@
 // minimized or hidden.
 //
 // Mode contract (all fields optional except id, name, detect, tabs):
-//   id, name                     'tno', 'Trust No One' (name shows in the header chip)
+//   id, name                     'tno', 'Trust No One' (name shows under the status; the chip is the site)
 //   css                          mode-only CSS; write `[data-mode="<id>"]` scoped rules
 //   install(hub)                 start the engine once at boot (every mode, active or not);
 //                                register teardown with hub.onDestroy(fn)
@@ -270,7 +270,8 @@ function createHub(opts) {
   const stDot = el('i', { cls: 'dot' }), stTxt = el('b'), stWho = el('span', { cls: 'who' });
   const st = el('span', { cls: 'st' }, stDot, stTxt, stWho);
   const stripSlot = el('span', { cls: 'strip' });
-  const meta = el('div', { cls: 'meta' }, st, stripSlot);
+  const modeName = el('span', { cls: 'mname' });
+  const meta = el('div', { cls: 'meta' }, st, el('span', { cls: 'metar' }, stripSlot, modeName));
   const bannerSlot = el('div', { style: 'display:contents' });
   const pill = el('i', { cls: 'pill' });
   const tabsEl = el('div', { cls: 'tabs' });
@@ -333,7 +334,8 @@ function createHub(opts) {
     const strip = mode.strip ? mode.strip(ui, hub) : null;
     if (strip) stripSlot.append(strip.node);
     built = { mode, tabs, strip };
-    put(chip, mode.name);
+    put(chip, opts.site || mode.name); // chip = the game (Gimkit); the mode name sits under the strip
+    put(modeName, opts.site ? mode.name : '');
     showTab(saved.tab[mode.id] && defs.some((d) => d.id === saved.tab[mode.id]) ? saved.tab[mode.id] : defs[0].id);
   }
 
@@ -388,6 +390,7 @@ function createHub(opts) {
     cls(tabsEl, 'off', true);
     show(tabsEl, kind === 'wait');
     put(chip, opts.site || 'Hub');
+    put(modeName, '');
     body.replaceChildren(...(kind === 'wait' ? waitPage : noPage));
   }
 
@@ -424,8 +427,10 @@ function createHub(opts) {
     stDot.className = 'dot' + (s.dot ? ' ' + s.dot : '');
     st.className = 'st' + (s.tone ? ' ' + s.tone : '');
     put(stTxt, s.text);
-    put(stWho, s.who || '');
-    stWho.title = s.who || '';
+    // second status line: which mode you're in, plus your name once it's known
+    const sub2 = s.who || '';
+    put(stWho, sub2);
+    stWho.title = sub2;
     miniDot.className = stDot.className;
     let mt = '';
     if (screen === 'mode' && active.mini) try { mt = active.mini() || ''; } catch (e) {}
