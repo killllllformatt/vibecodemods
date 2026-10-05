@@ -68,12 +68,21 @@ local function selectIfGamepad(obj)
 end
 
 ---------------------------------------------------------------- lock the player while the menu is up
-local controls = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls()
-controls:Disable()
+print("[MainMenu] running") -- if you don't see this in Output, the script isn't running at all
+-- freeze movement in the background so the menu never waits on it
+local controls
+task.spawn(function()
+	local ok, module = pcall(function()
+		return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 10))
+	end)
+	if ok and module then
+		controls = module:GetControls()
+		if player:GetAttribute("InMenu") then controls:Disable() end
+	end
+end)
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false) end)
 player:SetAttribute("InMenu", true) -- other LocalScripts can check this
 
-print("[MainMenu] running") -- if you don't see this in Output, the script isn't running at all
 local gui = new("ScreenGui", {Name = "MainMenu", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 10, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, player:WaitForChild("PlayerGui"))
 
 -- canvases: fixed-size frames that get scaled to fit any screen
@@ -351,6 +360,6 @@ playButton.onClick(function()
 	gui:Destroy()
 	if menuPart then workspace.CurrentCamera.CameraType = Enum.CameraType.Custom end
 	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true) end)
-	controls:Enable()
+	if controls then controls:Enable() end
 	player:SetAttribute("InMenu", false)
 end)
