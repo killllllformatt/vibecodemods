@@ -41,7 +41,6 @@ local DEPTH = 8 -- how far buttons "press down"
 
 ---------------------------------------------------------------- helpers
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
 
 local function tween(obj, t, props, style, dir, reps, rev, delay)
 	local tw = TweenService:Create(obj, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out, reps or 0, rev or false, delay or 0), props)
@@ -74,6 +73,7 @@ controls:Disable()
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false) end)
 player:SetAttribute("InMenu", true) -- other LocalScripts can check this
 
+print("[MainMenu] running") -- if you don't see this in Output, the script isn't running at all
 local gui = new("ScreenGui", {Name = "MainMenu", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 10, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, player:WaitForChild("PlayerGui"))
 
 -- canvases: fixed-size frames that get scaled to fit any screen
@@ -83,8 +83,12 @@ local function makeCanvas(parent)
 	table.insert(canvasScales, new("UIScale", {}, c))
 	return c
 end
+-- runs every frame: Roblox can swap the camera (and screen size) right after you join
 local function fit()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
 	local vp = camera.ViewportSize
+	if vp.X < 10 or vp.Y < 10 then return end -- screen not ready yet
 	local s = math.min(vp.X / CANVAS.X, vp.Y / CANVAS.Y, MAX_SCALE)
 	for _, sc in ipairs(canvasScales) do sc.Scale = s end
 end
@@ -291,7 +295,6 @@ end)
 
 ---------------------------------------------------------------- intro
 fit()
-local fitConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
 
 -- letters pop in one by one, then settle into a gentle wave
 for i, l in ipairs(letters) do
@@ -311,16 +314,18 @@ creditsButton.show(buttonsAt + 0.12)
 task.delay(buttonsAt + 0.5, selectIfGamepad, playButton.face)
 
 ---------------------------------------------------------------- per frame: drift bubbles, sway the menu camera
-if menuPart then camera.CameraType = Enum.CameraType.Scriptable end
 local t = 0
 local loop = RunService.RenderStepped:Connect(function(dt)
 	t += dt
+	fit()
 	for _, b in ipairs(bubbles) do
 		local y = b.frame.Position.Y.Scale - b.speed * dt
 		if y < -0.2 then y = 1.2 end
 		b.frame.Position = UDim2.fromScale(b.x + math.sin(t * 0.6 + b.phase) * 0.02, y)
 	end
 	if menuPart then
+		local camera = workspace.CurrentCamera
+		camera.CameraType = Enum.CameraType.Scriptable
 		camera.CFrame = menuPart.CFrame * CFrame.Angles(0, math.sin(t * 0.1) * 0.15, 0)
 	end
 end)
@@ -342,10 +347,9 @@ playButton.onClick(function()
 	task.wait(0.5)
 
 	loop:Disconnect()
-	fitConn:Disconnect()
 	backConn:Disconnect()
 	gui:Destroy()
-	if menuPart then camera.CameraType = Enum.CameraType.Custom end
+	if menuPart then workspace.CurrentCamera.CameraType = Enum.CameraType.Custom end
 	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true) end)
 	controls:Enable()
 	player:SetAttribute("InMenu", false)
