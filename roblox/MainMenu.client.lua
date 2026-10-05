@@ -69,6 +69,7 @@ end
 
 ---------------------------------------------------------------- lock the player while the menu is up
 print("[MainMenu] running") -- if you don't see this in Output, the script isn't running at all
+player:SetAttribute("InMenu", true) -- other LocalScripts can check this
 -- freeze movement in the background so the menu never waits on it
 local controls
 task.spawn(function()
@@ -81,7 +82,6 @@ task.spawn(function()
 	end
 end)
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false) end)
-player:SetAttribute("InMenu", true) -- other LocalScripts can check this
 
 local gui = new("ScreenGui", {Name = "MainMenu", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 10, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, player:WaitForChild("PlayerGui"))
 
