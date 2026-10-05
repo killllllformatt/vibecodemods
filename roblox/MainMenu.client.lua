@@ -141,16 +141,16 @@ local function makeButton(parent, o)
 	local enabled, pressed = false, false
 	local function setHover(on)
 		if not enabled and on then return end
-		tween(hover, 0.2, {Scale = on and 1.08 or 1}, Enum.EasingStyle.Back)
-		tween(inner, 0.2, {Rotation = on and -2 or 0}, Enum.EasingStyle.Back)
+		tween(hover, 0.12, {Scale = on and 1.08 or 1}, Enum.EasingStyle.Back)
+		tween(inner, 0.12, {Rotation = on and -2 or 0}, Enum.EasingStyle.Back)
 		if on then playSound("hover") end
 	end
 	local function press(down)
 		pressed = down
 		if down then
-			tween(face, 0.06, {Position = UDim2.fromOffset(0, DEPTH)})
+			tween(face, 0.04, {Position = UDim2.fromOffset(0, DEPTH)})
 		else
-			tween(face, 0.25, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back)
+			tween(face, 0.16, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back)
 		end
 	end
 	local function isPointer(input)
@@ -173,20 +173,20 @@ local function makeButton(parent, o)
 			local last = UserInputService:GetLastInputType()
 			if last == Enum.UserInputType.Keyboard or last.Name:find("Gamepad") then
 				press(true)
-				task.delay(0.07, press, false)
+				task.delay(0.05, press, false)
 			end
 			fn()
 		end)
 	end
 	function button.show(delay)
 		face.Position = UDim2.fromOffset(0, 0)
-		tween(pop, 0.5, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, delay)
-		task.delay(delay + 0.3, function() enabled = true end)
+		tween(pop, 0.3, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, delay)
+		task.delay(delay + 0.15, function() enabled = true end)
 	end
 	function button.hide(delay)
 		enabled = false
 		setHover(false)
-		return tween(pop, 0.25, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false, delay)
+		return tween(pop, 0.16, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false, delay)
 	end
 	function button.addShine()
 		local shine = new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, ZIndex = 3}, face)
@@ -197,7 +197,7 @@ local function makeButton(parent, o)
 		task.spawn(function()
 			while shine.Parent do
 				g.Offset = Vector2.new(-1.2, 0)
-				tween(g, 0.7, {Offset = Vector2.new(1.2, 0)}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+				tween(g, 0.45, {Offset = Vector2.new(1.2, 0)}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 				task.wait(2.5)
 			end
 		end)
@@ -268,16 +268,16 @@ local function openCredits()
 	busy = true
 	setMenuSelectable(false)
 	overlay.Visible = true
-	tween(overlay, 0.3, {BackgroundTransparency = 0.45})
+	tween(overlay, 0.15, {BackgroundTransparency = 0.45})
 	panelHolder.Rotation = -6
-	tween(panelPop, 0.5, {Scale = 1}, Enum.EasingStyle.Back)
-	tween(panelHolder, 0.7, {Rotation = 0}, Enum.EasingStyle.Elastic)
+	tween(panelPop, 0.28, {Scale = 1}, Enum.EasingStyle.Back)
+	tween(panelHolder, 0.3, {Rotation = 0}, Enum.EasingStyle.Back)
 	for i, sc in ipairs(rows) do
 		sc.Scale = 0
-		tween(sc, 0.4, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.15 + i * 0.07)
+		tween(sc, 0.22, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.06 + i * 0.035)
 	end
-	closeButton.show(0.3)
-	task.delay(0.6, function()
+	closeButton.show(0.12)
+	task.delay(0.3, function()
 		busy = false
 		selectIfGamepad(closeButton.face)
 	end)
@@ -287,8 +287,8 @@ local function closeCredits()
 	if busy or not overlay.Visible then return end
 	busy = true
 	closeButton.hide(0)
-	tween(overlay, 0.25, {BackgroundTransparency = 1})
-	tween(panelPop, 0.25, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In).Completed:Wait()
+	tween(overlay, 0.15, {BackgroundTransparency = 1})
+	tween(panelPop, 0.15, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In).Completed:Wait()
 	overlay.Visible = false
 	setMenuSelectable(true)
 	busy = false
@@ -307,20 +307,20 @@ fit()
 
 -- letters pop in one by one, then settle into a gentle wave
 for i, l in ipairs(letters) do
-	local d = 0.15 + i * 0.06
+	local d = 0.05 + i * 0.03
 	l.label.Rotation = math.random(-25, 25)
-	tween(l.scale, 0.45, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, d)
-	tween(l.label, 0.7, {Rotation = 0}, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out, 0, false, d)
-	task.delay(d + 0.7, function()
+	tween(l.scale, 0.28, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, d)
+	tween(l.label, 0.35, {Rotation = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, d)
+	task.delay(d + 0.35, function()
 		if l.label.Parent then
 			tween(l.label, 1.1, {Position = UDim2.new(0.5, 0, 0.5, -8)}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 		end
 	end)
 end
-local buttonsAt = 0.25 + #letters * 0.06
+local buttonsAt = 0.1 + #letters * 0.03
 playButton.show(buttonsAt)
-creditsButton.show(buttonsAt + 0.12)
-task.delay(buttonsAt + 0.5, selectIfGamepad, playButton.face)
+creditsButton.show(buttonsAt + 0.06)
+task.delay(buttonsAt + 0.3, selectIfGamepad, playButton.face)
 
 ---------------------------------------------------------------- per frame: drift bubbles, sway the menu camera
 local t = 0
@@ -346,14 +346,14 @@ playButton.onClick(function()
 	started = true
 	GuiService.SelectedObject = nil
 	creditsButton.hide(0)
-	playButton.hide(0.06)
+	playButton.hide(0.03)
 	for i, l in ipairs(letters) do
-		tween(l.scale, 0.25, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false, (#letters - i) * 0.025)
+		tween(l.scale, 0.16, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false, (#letters - i) * 0.012)
 	end
-	task.wait(0.45)
-	tween(bg, 0.5, {BackgroundTransparency = 1})
-	for _, b in ipairs(bubbles) do tween(b.frame, 0.4, {BackgroundTransparency = 1}) end
-	task.wait(0.5)
+	task.wait(0.22)
+	tween(bg, 0.3, {BackgroundTransparency = 1})
+	for _, b in ipairs(bubbles) do tween(b.frame, 0.25, {BackgroundTransparency = 1}) end
+	task.wait(0.3)
 
 	loop:Disconnect()
 	backConn:Disconnect()
